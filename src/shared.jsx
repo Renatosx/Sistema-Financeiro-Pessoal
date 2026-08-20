@@ -5,16 +5,16 @@ import { X } from "lucide-react";
 /*  Tokens                                                             */
 /* ------------------------------------------------------------------ */
 export const COLORS = {
-  ink: "#10203D",
-  paper: "#F4F5F8",
-  paperDim: "#E8EAF0",
-  line: "#D6DAE4",
-  green: "#256D5C",
-  greenDeep: "#184F42",
-  rust: "#9C3B3B",
-  gold: "#C9A227",
-  slate: "#5B6478",
-  white: "#FFFFFF",
+  ink: "var(--ink)",
+  paper: "var(--paper)",
+  paperDim: "var(--paperDim)",
+  line: "var(--line)",
+  green: "var(--green)",
+  greenDeep: "var(--green)",
+  rust: "var(--rust)",
+  gold: "var(--gold)",
+  slate: "var(--slate)",
+  white: "var(--white)",
 };
 
 export const CATEGORY_PALETTE = [
@@ -26,7 +26,7 @@ export const ACCOUNT_PALETTE = [
 ];
 
 export const fontDisplay = "'Fraunces', Georgia, serif";
-export const fontBody = "'Inter', system-ui, sans-serif";
+export const fontBody = "'Plus Jakarta Sans', system-ui, sans-serif";
 export const fontMono = "'IBM Plex Mono', ui-monospace, monospace";
 
 /* ------------------------------------------------------------------ */
