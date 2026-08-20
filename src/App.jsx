@@ -7,53 +7,17 @@ import {
   LayoutDashboard, Receipt, FolderTree, Target, Plus, Trash2, Pencil,
   TrendingUp, TrendingDown, Wallet, X, ChevronLeft, ChevronRight,
   PiggyBank, AlertTriangle, Check, ChevronDown, Landmark,
+  Coins, CreditCard, CalendarClock, ArrowRightLeft,
 } from "lucide-react";
-
-/* ------------------------------------------------------------------ */
-/*  Tokens                                                             */
-/* ------------------------------------------------------------------ */
-const COLORS = {
-  ink: "#1C2B24",
-  paper: "#F4F1E8",
-  paperDim: "#EAE5D6",
-  line: "#D8D0BC",
-  green: "#2F6B4F",
-  greenDeep: "#1F4A37",
-  rust: "#A8472F",
-  gold: "#B8912B",
-  slate: "#5B6B63",
-  white: "#FFFDF8",
-};
-const CATEGORY_PALETTE = [
-  "#2F6B4F", "#A8472F", "#B8912B", "#3D5A80", "#7B4B94",
-  "#5B6B63", "#4A6FA5", "#8B5E34", "#6B7F45", "#9A4C6B",
-];
-const ACCOUNT_PALETTE = [
-  "#3D5A80", "#7B4B94", "#2F6B4F", "#B8912B", "#5B6B63", "#A8472F",
-];
-
-const fontDisplay = "'Fraunces', Georgia, serif";
-const fontBody = "'Inter', system-ui, sans-serif";
-const fontMono = "'IBM Plex Mono', ui-monospace, monospace";
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                             */
-/* ------------------------------------------------------------------ */
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const brl = (n) =>
-  (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const monthKey = (d) => d.slice(0, 7); // "YYYY-MM"
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const monthLabel = (ym) => {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-};
-const shiftMonth = (ym, delta) => {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-};
+import {
+  COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
+  uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate,
+  inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn,
+  Panel, EmptyHint, Header, Select,
+} from "./shared.jsx";
+import Investments from "./Investments.jsx";
+import Installments from "./Installments.jsx";
+import Provisions from "./Provisions.jsx";
 
 const DEFAULT_CATEGORIES = [
   { id: uid(), name: "Salário", type: "receita", color: CATEGORY_PALETTE[0], budget: 0, subcategories: [] },
@@ -91,152 +55,27 @@ const K_TX = "pf-transactions";
 const K_CAT = "pf-categories";
 const K_GOALS = "pf-goals";
 const K_ACC = "pf-accounts";
+const K_INV = "pf-investments";
+const K_INST = "pf-installments";
+const K_PROV = "pf-provisions";
+const K_SETTINGS = "pf-settings";
 
 import { loadKey, saveKey } from "./storage.js";
 
 /* ------------------------------------------------------------------ */
-/*  Small UI atoms                                                      */
-/* ------------------------------------------------------------------ */
-function Stamp({ positive }) {
-  return (
-    <span
-      style={{
-        fontFamily: fontMono,
-        fontSize: 11,
-        letterSpacing: "0.08em",
-        padding: "3px 8px",
-        borderRadius: 3,
-        border: `1px solid ${positive ? COLORS.green : COLORS.rust}`,
-        color: positive ? COLORS.green : COLORS.rust,
-        textTransform: "uppercase",
-      }}
-    >
-      {positive ? "Superávit" : "Déficit"}
-    </span>
-  );
-}
-
-function IconBtn({ onClick, title, children, color }) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className="p-1.5 rounded transition-colors"
-      style={{ color: color || COLORS.slate }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = COLORS.paperDim)}
-      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Modal({ title, onClose, children, width = 460 }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(28,43,36,0.45)" }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full rounded-md shadow-xl overflow-hidden"
-        style={{ maxWidth: width, background: COLORS.white, border: `1px solid ${COLORS.line}` }}
-      >
-        <div
-          className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: `1px solid ${COLORS.line}` }}
-        >
-          <h3 style={{ fontFamily: fontDisplay, fontSize: 19, color: COLORS.ink, fontWeight: 600 }}>
-            {title}
-          </h3>
-          <button onClick={onClose} style={{ color: COLORS.slate }}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block mb-3">
-      <span
-        style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate, fontWeight: 600, letterSpacing: "0.03em" }}
-        className="uppercase block mb-1"
-      >
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-const inputStyle = {
-  width: "100%",
-  fontFamily: fontBody,
-  fontSize: 14,
-  padding: "9px 11px",
-  border: `1px solid ${COLORS.line}`,
-  borderRadius: 5,
-  background: COLORS.white,
-  color: COLORS.ink,
-  outline: "none",
-};
-
-function PrimaryBtn({ children, onClick, type = "button", full }) {
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      className="rounded-md transition-opacity hover:opacity-90"
-      style={{
-        fontFamily: fontBody,
-        fontWeight: 600,
-        fontSize: 14,
-        padding: "10px 16px",
-        background: COLORS.ink,
-        color: COLORS.white,
-        width: full ? "100%" : "auto",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-function GhostBtn({ children, onClick, full }) {
-  return (
-    <button
-      onClick={onClick}
-      className="rounded-md transition-colors"
-      style={{
-        fontFamily: fontBody,
-        fontWeight: 600,
-        fontSize: 14,
-        padding: "10px 16px",
-        background: "transparent",
-        color: COLORS.ink,
-        border: `1px solid ${COLORS.line}`,
-        width: full ? "100%" : "auto",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  App                                                                  */
 /* ------------------------------------------------------------------ */
-export default function App() {
+export default function App({ userEmail, onSignOut }) {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [goals, setGoals] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [investments, setInvestments] = useState([]);
+  const [installments, setInstallments] = useState([]);
+  const [provisions, setProvisions] = useState([]);
+  const [settings, setSettings] = useState({ monthlyCommitLimit: 0 });
   const [month, setMonth] = useState(monthKey(todayISO()));
 
   const [txModal, setTxModal] = useState(null); // null | {editing?:tx}
@@ -249,11 +88,15 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [tx, cat, gl, acc] = await Promise.all([
+      const [tx, cat, gl, acc, inv, inst, prov, sett] = await Promise.all([
         loadKey(K_TX, []),
         loadKey(K_CAT, null),
         loadKey(K_GOALS, []),
         loadKey(K_ACC, null),
+        loadKey(K_INV, []),
+        loadKey(K_INST, []),
+        loadKey(K_PROV, []),
+        loadKey(K_SETTINGS, { monthlyCommitLimit: 0 }),
       ]);
       let finalCat = cat;
       if (!finalCat || finalCat.length === 0) {
@@ -269,6 +112,10 @@ export default function App() {
       setCategories(finalCat);
       setGoals(gl);
       setAccounts(finalAcc);
+      setInvestments(inv);
+      setInstallments(inst);
+      setProvisions(prov);
+      setSettings(sett || { monthlyCommitLimit: 0 });
       setReady(true);
     })();
   }, []);
@@ -277,18 +124,76 @@ export default function App() {
   const persistCat = useCallback((next) => { setCategories(next); saveKey(K_CAT, next); }, []);
   const persistGoals = useCallback((next) => { setGoals(next); saveKey(K_GOALS, next); }, []);
   const persistAcc = useCallback((next) => { setAccounts(next); saveKey(K_ACC, next); }, []);
+  const persistInvestments = useCallback((next) => { setInvestments(next); saveKey(K_INV, next); }, []);
+  const persistInstallments = useCallback((next) => { setInstallments(next); saveKey(K_INST, next); }, []);
+  const persistProvisions = useCallback((next) => { setProvisions(next); saveKey(K_PROV, next); }, []);
+  const persistSettings = useCallback((next) => { setSettings(next); saveKey(K_SETTINGS, next); }, []);
 
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const accountById = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
 
+  const handlePayInstallment = useCallback((inst) => {
+    const fallbackCat = categories.find((c) => c.type === "despesa" && c.name === "Outros") || categories.find((c) => c.type === "despesa");
+    const tx = {
+      id: uid(), type: "despesa",
+      categoryId: fallbackCat?.id || null, subcategoryId: null,
+      accountId: inst.accountId || accounts[0]?.id || null,
+      amount: inst.installmentAmount, date: todayISO(),
+      description: `${inst.description} (parcela ${inst.installmentsPaid + 1}/${inst.installmentsTotal})`,
+    };
+    setTransactions((prev) => { const next = [tx, ...prev]; saveKey(K_TX, next); return next; });
+    setInstallments((prev) => {
+      const next = prev.map((x) => x.id === inst.id ? { ...x, installmentsPaid: Math.min(x.installmentsTotal, x.installmentsPaid + 1) } : x);
+      saveKey(K_INST, next);
+      return next;
+    });
+  }, [categories, accounts]);
+
+  const handleLaunchProvision = useCallback((prov) => {
+    const tx = {
+      id: uid(), type: prov.type === "receber" ? "receita" : "despesa",
+      categoryId: prov.categoryId || null, subcategoryId: null,
+      accountId: prov.accountId || accounts[0]?.id || null,
+      amount: prov.amount, date: todayISO(), description: prov.description,
+    };
+    setTransactions((prev) => { const next = [tx, ...prev]; saveKey(K_TX, next); return next; });
+    setProvisions((prev) => {
+      const next = prev.map((x) => {
+        if (x.id !== prov.id) return x;
+        return x.recurring ? { ...x, expectedDate: addMonthToDate(x.expectedDate) } : { ...x, status: "concluido" };
+      });
+      saveKey(K_PROV, next);
+      return next;
+    });
+  }, [accounts]);
+
   const accountBalances = useMemo(() => {
     return accounts.map((a) => {
-      const net = transactions
-        .filter((t) => t.accountId === a.id)
-        .reduce((acc, t) => acc + (t.type === "receita" ? t.amount : -t.amount), 0);
+      const net = transactions.reduce((acc, t) => {
+        if (t.type === "transferencia") {
+          if (t.toAccountId === a.id) return acc + t.amount;
+          if (t.fromAccountId === a.id) return acc - t.amount;
+          return acc;
+        }
+        if (t.accountId !== a.id) return acc;
+        return acc + (t.type === "receita" ? t.amount : -t.amount);
+      }, 0);
       return { ...a, balance: (a.initialBalance || 0) + net };
     });
   }, [accounts, transactions]);
+
+  const goalBalances = useMemo(() => {
+    return goals.map((g) => {
+      if (!g.accountId) return { ...g, computedAmount: g.currentAmount || 0 };
+      const net = transactions.reduce((acc, t) => {
+        if (t.type !== "transferencia") return acc;
+        if (t.toAccountId === g.accountId) return acc + t.amount;
+        if (t.fromAccountId === g.accountId) return acc - t.amount;
+        return acc;
+      }, 0);
+      return { ...g, computedAmount: net };
+    });
+  }, [goals, transactions]);
 
   const monthTx = useMemo(
     () => transactions.filter((t) => monthKey(t.date) === month),
@@ -296,12 +201,19 @@ export default function App() {
   );
   const totals = useMemo(() => {
     let income = 0, expense = 0;
-    monthTx.forEach((t) => (t.type === "receita" ? (income += t.amount) : (expense += t.amount)));
+    monthTx.forEach((t) => {
+      if (t.type === "receita") income += t.amount;
+      else if (t.type === "despesa") expense += t.amount;
+    });
     return { income, expense, balance: income - expense };
   }, [monthTx]);
   const totalBalanceAllTime = useMemo(
     () =>
-      transactions.reduce((acc, t) => acc + (t.type === "receita" ? t.amount : -t.amount), 0),
+      transactions.reduce((acc, t) => {
+        if (t.type === "receita") return acc + t.amount;
+        if (t.type === "despesa") return acc - t.amount;
+        return acc;
+      }, 0),
     [transactions]
   );
 
@@ -356,7 +268,10 @@ export default function App() {
               { id: "transactions", label: "Lançamentos", icon: Receipt },
               { id: "categories", label: "Categorias", icon: FolderTree },
               { id: "accounts", label: "Bancos", icon: Landmark },
+              { id: "investments", label: "Investimentos", icon: Coins },
               { id: "goals", label: "Metas", icon: Target },
+              { id: "installments", label: "Parcelamentos", icon: CreditCard },
+              { id: "provisions", label: "Provisões", icon: CalendarClock },
             ].map((item) => {
               const Icon = item.icon;
               const active = tab === item.id;
@@ -379,6 +294,21 @@ export default function App() {
               );
             })}
           </nav>
+
+          <div
+            className="hidden md:flex flex-col gap-2 px-5 py-4 mt-auto"
+            style={{ borderTop: "1px solid rgba(244,241,232,0.12)" }}
+          >
+            <span style={{ fontFamily: fontBody, fontSize: 11.5, color: "#9BAFA4" }} className="truncate">
+              {userEmail}
+            </span>
+            <button
+              onClick={onSignOut}
+              style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.paper, textAlign: "left", opacity: 0.75 }}
+            >
+              Sair
+            </button>
+          </div>
         </aside>
 
         {/* Main */}
@@ -388,7 +318,7 @@ export default function App() {
               month={month} setMonth={setMonth}
               totals={totals} totalBalanceAllTime={totalBalanceAllTime}
               expenseByCategory={expenseByCategory} budgetData={budgetData}
-              goals={goals} accountBalances={accountBalances}
+              goals={goalBalances} accountBalances={accountBalances}
             />
           )}
           {tab === "transactions" && (
@@ -425,11 +355,34 @@ export default function App() {
           )}
           {tab === "goals" && (
             <Goals
-              goals={goals}
+              goals={goalBalances}
               onAdd={() => setGoalModal({})}
               onEdit={(g) => setGoalModal({ editing: g })}
               onDelete={(g) => setConfirmDelete({ type: "goal", id: g.id, label: g.name })}
               onContribute={(g) => setContribGoal(g)}
+            />
+          )}
+          {tab === "investments" && (
+            <Investments
+              investments={investments} accounts={accounts} transactions={transactions}
+              persistInvestments={persistInvestments}
+              onDeleteRequest={(inv) => setConfirmDelete({ type: "inv", id: inv.id, label: inv.name })}
+            />
+          )}
+          {tab === "installments" && (
+            <Installments
+              installments={installments} accounts={accounts} settings={settings}
+              persistInstallments={persistInstallments} persistSettings={persistSettings}
+              onPay={handlePayInstallment}
+              onDeleteRequest={(inst) => setConfirmDelete({ type: "inst", id: inst.id, label: inst.description })}
+            />
+          )}
+          {tab === "provisions" && (
+            <Provisions
+              provisions={provisions} categories={categories} accounts={accounts}
+              persistProvisions={persistProvisions}
+              onLaunch={handleLaunchProvision}
+              onDeleteRequest={(p) => setConfirmDelete({ type: "prov", id: p.id, label: p.description })}
             />
           )}
         </main>
@@ -499,6 +452,7 @@ export default function App() {
       {goalModal && (
         <GoalModal
           initial={goalModal.editing}
+          accounts={accounts}
           onClose={() => setGoalModal(null)}
           onSave={(g) => {
             if (goalModal.editing) {
@@ -537,6 +491,9 @@ export default function App() {
                 if (confirmDelete.type === "cat") persistCat(categories.filter((c) => c.id !== confirmDelete.id));
                 if (confirmDelete.type === "goal") persistGoals(goals.filter((g) => g.id !== confirmDelete.id));
                 if (confirmDelete.type === "acc") persistAcc(accounts.filter((a) => a.id !== confirmDelete.id));
+                if (confirmDelete.type === "inv") persistInvestments(investments.filter((x) => x.id !== confirmDelete.id));
+                if (confirmDelete.type === "inst") persistInstallments(installments.filter((x) => x.id !== confirmDelete.id));
+                if (confirmDelete.type === "prov") persistProvisions(provisions.filter((x) => x.id !== confirmDelete.id));
                 setConfirmDelete(null);
               }}
               className="rounded-md"
@@ -662,7 +619,8 @@ function Dashboard({ month, setMonth, totals, totalBalanceAllTime, expenseByCate
 }
 
 function GoalMini({ goal }) {
-  const pct = Math.min(100, (goal.currentAmount / (goal.targetAmount || 1)) * 100);
+  const amount = goal.computedAmount ?? goal.currentAmount ?? 0;
+  const pct = Math.min(100, (amount / (goal.targetAmount || 1)) * 100);
   return (
     <div>
       <div className="flex justify-between items-baseline mb-1">
@@ -673,7 +631,7 @@ function GoalMini({ goal }) {
         <div style={{ width: `${pct}%`, height: "100%", background: COLORS.gold }} />
       </div>
       <div style={{ fontFamily: fontMono, fontSize: 11.5, color: COLORS.slate, marginTop: 4 }}>
-        {brl(goal.currentAmount)} de {brl(goal.targetAmount)}
+        {brl(amount)} de {brl(goal.targetAmount)}
       </div>
     </div>
   );
@@ -688,35 +646,6 @@ function SummaryCard({ label, value, icon: Icon, tone, stamp }) {
       </div>
       <div style={{ fontFamily: fontMono, fontSize: 24, fontWeight: 600, color: tone }}>{brl(value)}</div>
       {stamp && <div className="mt-2"><Stamp positive={value >= 0} /></div>}
-    </div>
-  );
-}
-
-function Panel({ title, children }) {
-  return (
-    <div className="rounded-md p-5" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
-      <h3 style={{ fontFamily: fontDisplay, fontSize: 17, fontWeight: 600, color: COLORS.ink, marginBottom: 12 }}>{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function EmptyHint({ text }) {
-  return (
-    <div className="flex items-center justify-center py-16" style={{ fontFamily: fontBody, fontSize: 13.5, color: COLORS.slate }}>
-      {text}
-    </div>
-  );
-}
-
-function Header({ title, subtitle, right }) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 style={{ fontFamily: fontDisplay, fontSize: 30, fontWeight: 700, color: COLORS.ink }}>{title}</h1>
-        {subtitle && <p style={{ fontFamily: fontBody, fontSize: 13.5, color: COLORS.slate, marginTop: 2 }}>{subtitle}</p>}
-      </div>
-      {right}
     </div>
   );
 }
@@ -768,6 +697,7 @@ function Transactions({ transactions, categories, catById, accounts, accountById
           { value: "todos", label: "Todos os tipos" },
           { value: "receita", label: "Receitas" },
           { value: "despesa", label: "Despesas" },
+          { value: "transferencia", label: "Transferências" },
         ]} />
         <Select value={filterCat} onChange={setFilterCat} options={[
           { value: "todas", label: "Todas as categorias" },
@@ -780,6 +710,7 @@ function Transactions({ transactions, categories, catById, accounts, accountById
           <EmptyHint text="Nenhum lançamento encontrado." />
         ) : (
           list.map((t, i) => {
+            const isTransfer = t.type === "transferencia";
             const cat = catById[t.categoryId];
             const sub = cat?.subcategories?.find((s) => s.id === t.subcategoryId);
             return (
@@ -789,13 +720,16 @@ function Transactions({ transactions, categories, catById, accounts, accountById
                 style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span style={{ width: 9, height: 9, borderRadius: 9, background: cat?.color || COLORS.slate, flexShrink: 0 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: 9, background: isTransfer ? COLORS.slate : (cat?.color || COLORS.slate), flexShrink: 0 }} />
                   <div className="min-w-0">
                     <div style={{ fontFamily: fontBody, fontSize: 14, fontWeight: 600, color: COLORS.ink }} className="truncate">
-                      {t.description || cat?.name || "Sem descrição"}
+                      {isTransfer ? (t.description || "Transferência") : (t.description || cat?.name || "Sem descrição")}
                     </div>
                     <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>
-                      {cat?.name}{sub ? ` › ${sub.name}` : ""} · {accountById[t.accountId]?.name || "sem conta"} · {new Date(t.date + "T00:00:00").toLocaleDateString("pt-BR")}
+                      {isTransfer
+                        ? `${accountById[t.fromAccountId]?.name || "?"} → ${accountById[t.toAccountId]?.name || "?"}`
+                        : `${cat?.name || ""}${sub ? ` › ${sub.name}` : ""} · ${accountById[t.accountId]?.name || "sem conta"}`
+                      } · {new Date(t.date + "T00:00:00").toLocaleDateString("pt-BR")}
                     </div>
                   </div>
                 </div>
@@ -803,10 +737,10 @@ function Transactions({ transactions, categories, catById, accounts, accountById
                   <span
                     style={{
                       fontFamily: fontMono, fontSize: 15, fontWeight: 600,
-                      color: t.type === "receita" ? COLORS.green : COLORS.rust,
+                      color: isTransfer ? COLORS.ink : t.type === "receita" ? COLORS.green : COLORS.rust,
                     }}
                   >
-                    {t.type === "receita" ? "+" : "−"} {brl(t.amount)}
+                    {isTransfer ? "⇄" : t.type === "receita" ? "+" : "−"} {brl(t.amount)}
                   </span>
                   <IconBtn onClick={() => onEdit(t)} title="Editar"><Pencil size={14} /></IconBtn>
                   <IconBtn onClick={() => onDelete(t)} title="Excluir" color={COLORS.rust}><Trash2 size={14} /></IconBtn>
@@ -816,24 +750,6 @@ function Transactions({ transactions, categories, catById, accounts, accountById
           })
         )}
       </div>
-    </div>
-  );
-}
-
-function Select({ value, onChange, options }) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="appearance-none rounded-md pr-8 pl-3 py-2"
-        style={{ fontFamily: fontBody, fontSize: 13, border: `1px solid ${COLORS.line}`, background: COLORS.white, color: COLORS.ink }}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-      <ChevronDown size={14} style={{ position: "absolute", right: 8, top: 9, color: COLORS.slate, pointerEvents: "none" }} />
     </div>
   );
 }
@@ -1014,8 +930,9 @@ function Goals({ goals, onAdd, onEdit, onDelete, onContribute }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
           {goals.map((g) => {
-            const pct = Math.min(100, (g.currentAmount / (g.targetAmount || 1)) * 100);
-            const done = g.currentAmount >= g.targetAmount;
+            const amount = g.computedAmount ?? g.currentAmount ?? 0;
+            const pct = Math.min(100, (amount / (g.targetAmount || 1)) * 100);
+            const done = amount >= g.targetAmount;
             return (
               <div key={g.id} className="rounded-md p-5" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
                 <div className="flex items-start justify-between">
@@ -1040,7 +957,7 @@ function Goals({ goals, onAdd, onEdit, onDelete, onContribute }) {
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span style={{ fontFamily: fontMono, fontSize: 13, color: COLORS.ink }}>
-                    {brl(g.currentAmount)} <span style={{ color: COLORS.slate }}>/ {brl(g.targetAmount)}</span>
+                    {brl(amount)} <span style={{ color: COLORS.slate }}>/ {brl(g.targetAmount)}</span>
                   </span>
                   <span style={{ fontFamily: fontMono, fontSize: 12.5, color: COLORS.slate }}>{pct.toFixed(0)}%</span>
                 </div>
@@ -1048,6 +965,10 @@ function Goals({ goals, onAdd, onEdit, onDelete, onContribute }) {
                 {done ? (
                   <div className="mt-3 flex items-center gap-1.5" style={{ color: COLORS.green, fontFamily: fontBody, fontSize: 13, fontWeight: 600 }}>
                     <Check size={15} /> Meta concluída
+                  </div>
+                ) : g.accountId ? (
+                  <div className="mt-3 rounded-md p-2.5" style={{ background: COLORS.paperDim, fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>
+                    Sincronizada: lance uma transferência para a conta vinculada em Lançamentos.
                   </div>
                 ) : (
                   <button
@@ -1075,14 +996,18 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
   const [categoryId, setCategoryId] = useState(initial?.categoryId || "");
   const [subcategoryId, setSubcategoryId] = useState(initial?.subcategoryId || "");
   const [accountId, setAccountId] = useState(initial?.accountId || accounts?.[0]?.id || "");
+  const [fromAccountId, setFromAccountId] = useState(initial?.fromAccountId || accounts?.[0]?.id || "");
+  const [toAccountId, setToAccountId] = useState(initial?.toAccountId || accounts?.[1]?.id || accounts?.[0]?.id || "");
   const [amount, setAmount] = useState(initial?.amount?.toString() || "");
   const [date, setDate] = useState(initial?.date || todayISO());
   const [description, setDescription] = useState(initial?.description || "");
 
+  const isTransfer = type === "transferencia";
   const filteredCats = categories.filter((c) => c.type === type);
   const currentCat = categories.find((c) => c.id === categoryId);
 
   useEffect(() => {
+    if (isTransfer) return;
     if (!filteredCats.find((c) => c.id === categoryId)) {
       setCategoryId(filteredCats[0]?.id || "");
       setSubcategoryId("");
@@ -1090,23 +1015,25 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 
-  const canSave = categoryId && parseFloat(amount) > 0 && date;
+  const canSave = isTransfer
+    ? fromAccountId && toAccountId && fromAccountId !== toAccountId && parseFloat(amount) > 0 && date
+    : categoryId && parseFloat(amount) > 0 && date;
 
   return (
     <Modal title={initial ? "Editar lançamento" : "Novo lançamento"} onClose={onClose}>
       <div className="flex gap-2 mb-4">
-        {["receita", "despesa"].map((t) => (
+        {[{ v: "receita", l: "Receita" }, { v: "despesa", l: "Despesa" }, { v: "transferencia", l: "Transferência" }].map((t) => (
           <button
-            key={t}
-            onClick={() => setType(t)}
+            key={t.v}
+            onClick={() => setType(t.v)}
             className="flex-1 rounded-md py-2"
             style={{
-              fontFamily: fontBody, fontWeight: 600, fontSize: 13.5,
-              background: type === t ? (t === "receita" ? COLORS.green : COLORS.rust) : COLORS.paperDim,
-              color: type === t ? COLORS.white : COLORS.slate,
+              fontFamily: fontBody, fontWeight: 600, fontSize: 13,
+              background: type === t.v ? (t.v === "receita" ? COLORS.green : t.v === "despesa" ? COLORS.rust : COLORS.ink) : COLORS.paperDim,
+              color: type === t.v ? COLORS.white : COLORS.slate,
             }}
           >
-            {t === "receita" ? "Receita" : "Despesa"}
+            {t.l}
           </button>
         ))}
       </div>
@@ -1115,28 +1042,50 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
         <input style={inputStyle} type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" />
       </Field>
 
-      <Field label="Categoria">
-        <select style={inputStyle} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId(""); }}>
-          <option value="" disabled>Selecione</option>
-          {filteredCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </Field>
+      {isTransfer ? (
+        <>
+          <Field label="De (conta de origem)">
+            <select style={inputStyle} value={fromAccountId} onChange={(e) => setFromAccountId(e.target.value)}>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Para (conta de destino)">
+            <select style={inputStyle} value={toAccountId} onChange={(e) => setToAccountId(e.target.value)}>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+          {fromAccountId && toAccountId && fromAccountId === toAccountId && (
+            <p style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.rust, marginTop: -6, marginBottom: 12 }}>
+              A conta de origem e destino precisam ser diferentes.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <Field label="Categoria">
+            <select style={inputStyle} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId(""); }}>
+              <option value="" disabled>Selecione</option>
+              {filteredCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
 
-      {currentCat?.subcategories?.length > 0 && (
-        <Field label="Subcategoria (opcional)">
-          <select style={inputStyle} value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)}>
-            <option value="">Nenhuma</option>
-            {currentCat.subcategories.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </Field>
-      )}
+          {currentCat?.subcategories?.length > 0 && (
+            <Field label="Subcategoria (opcional)">
+              <select style={inputStyle} value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)}>
+                <option value="">Nenhuma</option>
+                {currentCat.subcategories.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </Field>
+          )}
 
-      {accounts?.length > 0 && (
-        <Field label="Banco / conta">
-          <select style={inputStyle} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        </Field>
+          {accounts?.length > 0 && (
+            <Field label="Banco / conta">
+              <select style={inputStyle} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </Field>
+          )}
+        </>
       )}
 
       <Field label="Data">
@@ -1144,7 +1093,7 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
       </Field>
 
       <Field label="Descrição (opcional)">
-        <input style={inputStyle} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Mercado do mês" />
+        <input style={inputStyle} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={isTransfer ? "Ex.: Aporte mensal" : "Ex.: Mercado do mês"} />
       </Field>
 
       <div className="flex gap-2 justify-end mt-5">
@@ -1152,10 +1101,18 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
         <PrimaryBtn
           onClick={() => {
             if (!canSave) return;
-            onSave({
-              id: initial?.id, type, categoryId, subcategoryId: subcategoryId || null,
-              accountId: accountId || null, amount: parseFloat(amount), date, description: description.trim(),
-            });
+            if (isTransfer) {
+              onSave({
+                id: initial?.id, type, fromAccountId, toAccountId,
+                amount: parseFloat(amount), date, description: description.trim(),
+                categoryId: null, subcategoryId: null, accountId: null,
+              });
+            } else {
+              onSave({
+                id: initial?.id, type, categoryId, subcategoryId: subcategoryId || null,
+                accountId: accountId || null, amount: parseFloat(amount), date, description: description.trim(),
+              });
+            }
           }}
         >
           Salvar
@@ -1250,10 +1207,11 @@ function SubcategoryModal({ category, onClose, onAdd }) {
   );
 }
 
-function GoalModal({ initial, onClose, onSave }) {
+function GoalModal({ initial, accounts, onClose, onSave }) {
   const [name, setName] = useState(initial?.name || "");
   const [targetAmount, setTargetAmount] = useState(initial?.targetAmount?.toString() || "");
   const [deadline, setDeadline] = useState(initial?.deadline || "");
+  const [accountId, setAccountId] = useState(initial?.accountId || "");
 
   return (
     <Modal title={initial ? "Editar meta" : "Nova meta"} onClose={onClose}>
@@ -1266,6 +1224,15 @@ function GoalModal({ initial, onClose, onSave }) {
       <Field label="Prazo (opcional)">
         <input style={inputStyle} type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
       </Field>
+      <Field
+        label="Conta vinculada (opcional)"
+        hint="Se vincular, o progresso passa a ser automático: some transferências para essa conta em Lançamentos e o aporte manual fica desativado."
+      >
+        <select style={inputStyle} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <option value="">Nenhuma — controle manual</option>
+          {accounts?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </Field>
       <div className="flex gap-2 justify-end mt-5">
         <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
         <PrimaryBtn
@@ -1274,6 +1241,7 @@ function GoalModal({ initial, onClose, onSave }) {
             onSave({
               id: initial?.id, name: name.trim(), targetAmount: parseFloat(targetAmount),
               deadline: deadline || null, currentAmount: initial?.currentAmount || 0,
+              accountId: accountId || null,
             });
           }}
         >
