@@ -5,16 +5,16 @@ import { X } from "lucide-react";
 /*  Tokens                                                             */
 /* ------------------------------------------------------------------ */
 export const COLORS = {
-  ink: "#1C2B24",
-  paper: "#F4F1E8",
-  paperDim: "#EAE5D6",
-  line: "#D8D0BC",
-  green: "#2F6B4F",
-  greenDeep: "#1F4A37",
-  rust: "#A8472F",
-  gold: "#B8912B",
-  slate: "#5B6B63",
-  white: "#FFFDF8",
+  ink: "#10203D",
+  paper: "#F4F5F8",
+  paperDim: "#E8EAF0",
+  line: "#D6DAE4",
+  green: "#256D5C",
+  greenDeep: "#184F42",
+  rust: "#9C3B3B",
+  gold: "#C9A227",
+  slate: "#5B6478",
+  white: "#FFFFFF",
 };
 
 export const CATEGORY_PALETTE = [
