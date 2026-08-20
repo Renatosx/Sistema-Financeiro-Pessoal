@@ -3,15 +3,15 @@ import { supabase } from "./supabaseClient.js";
 import App from "./App.jsx";
 
 const fontDisplay = "'Fraunces', Georgia, serif";
-const fontBody = "'Inter', system-ui, sans-serif";
+const fontBody = "'Plus Jakarta Sans', system-ui, sans-serif";
 const COLORS = {
-  ink: "#10203D",
-  paper: "#F4F5F8",
-  line: "#D6DAE4",
-  rust: "#9C3B3B",
-  green: "#256D5C",
-  slate: "#5B6478",
-  white: "#FFFFFF",
+  ink: "var(--ink)",
+  paper: "var(--paper)",
+  line: "var(--line)",
+  rust: "var(--rust)",
+  green: "var(--green)",
+  slate: "var(--slate)",
+  white: "var(--white)",
 };
 
 const inputStyle = {
