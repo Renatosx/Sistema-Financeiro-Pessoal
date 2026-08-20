@@ -139,14 +139,6 @@ export default function App({ userEmail, onSignOut }) {
     document.documentElement.dataset.theme = settings.theme === "dark" ? "dark" : "light";
   }, [settings.theme]);
 
-  const toggleTheme = useCallback(() => {
-    setSettings((prev) => {
-      const next = { ...prev, theme: prev.theme === "dark" ? "light" : "dark" };
-      saveKey(K_SETTINGS, next);
-      return next;
-    });
-  }, []);
-
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const accountById = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
 
@@ -323,14 +315,32 @@ export default function App({ userEmail, onSignOut }) {
             <span style={{ fontFamily: fontBody, fontSize: 11.5, color: "#9BAFA4" }} className="truncate">
               {userEmail}
             </span>
-            <button
-              onClick={toggleTheme}
-              className="flex items-center gap-1.5"
-              style={{ fontFamily: fontBody, fontSize: 12.5, color: "#F4F5F8", textAlign: "left", opacity: 0.75 }}
-            >
-              {settings.theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
-              {settings.theme === "dark" ? "Modo claro" : "Modo escuro"}
-            </button>
+            <div className="flex items-center gap-1 rounded-md p-0.5" style={{ background: "rgba(244,241,232,0.08)" }}>
+              <button
+                onClick={() => settings.theme !== "light" && persistSettings({ ...settings, theme: "light" })}
+                className="flex-1 flex items-center justify-center gap-1 rounded py-1.5"
+                style={{
+                  fontFamily: fontBody, fontSize: 11.5, fontWeight: 600,
+                  background: settings.theme !== "dark" ? "#F4F5F8" : "transparent",
+                  color: settings.theme !== "dark" ? "#10203D" : "#F4F5F8",
+                  opacity: settings.theme !== "dark" ? 1 : 0.65,
+                }}
+              >
+                <Sun size={12} /> Claro
+              </button>
+              <button
+                onClick={() => settings.theme !== "dark" && persistSettings({ ...settings, theme: "dark" })}
+                className="flex-1 flex items-center justify-center gap-1 rounded py-1.5"
+                style={{
+                  fontFamily: fontBody, fontSize: 11.5, fontWeight: 600,
+                  background: settings.theme === "dark" ? "#F4F5F8" : "transparent",
+                  color: settings.theme === "dark" ? "#10203D" : "#F4F5F8",
+                  opacity: settings.theme === "dark" ? 1 : 0.65,
+                }}
+              >
+                <Moon size={12} /> Escuro
+              </button>
+            </div>
             <button
               onClick={onSignOut}
               style={{ fontFamily: fontBody, fontSize: 12.5, color: "#F4F5F8", textAlign: "left", opacity: 0.75 }}
@@ -788,8 +798,10 @@ function Transactions({ transactions, categories, catById, accounts, accountById
 /*  Categories                                                          */
 /* ------------------------------------------------------------------ */
 function Categories({ categories, onAdd, onEdit, onDelete, onAddSub, onDeleteSub }) {
+  const [catTab, setCatTab] = useState("despesa");
   const receitas = categories.filter((c) => c.type === "receita");
   const despesas = categories.filter((c) => c.type === "despesa");
+  const items = catTab === "receita" ? receitas : despesas;
 
   return (
     <div>
@@ -807,8 +819,36 @@ function Categories({ categories, onAdd, onEdit, onDelete, onAddSub, onDeleteSub
         }
       />
 
-      <CategoryGroup title="Receitas" items={receitas} onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onDeleteSub={onDeleteSub} />
-      <CategoryGroup title="Despesas" items={despesas} onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onDeleteSub={onDeleteSub} showBudget />
+      <div className="flex gap-2 mt-5 mb-2">
+        <button
+          onClick={() => setCatTab("receita")}
+          className="rounded-md py-2 px-4"
+          style={{
+            fontFamily: fontBody, fontWeight: 600, fontSize: 13.5,
+            background: catTab === "receita" ? COLORS.green : COLORS.paperDim,
+            color: catTab === "receita" ? COLORS.white : COLORS.slate,
+          }}
+        >
+          Receitas ({receitas.length})
+        </button>
+        <button
+          onClick={() => setCatTab("despesa")}
+          className="rounded-md py-2 px-4"
+          style={{
+            fontFamily: fontBody, fontWeight: 600, fontSize: 13.5,
+            background: catTab === "despesa" ? COLORS.rust : COLORS.paperDim,
+            color: catTab === "despesa" ? COLORS.white : COLORS.slate,
+          }}
+        >
+          Despesas ({despesas.length})
+        </button>
+      </div>
+
+      <CategoryGroup
+        title={catTab === "receita" ? "Receitas" : "Despesas"}
+        items={items} onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onDeleteSub={onDeleteSub}
+        showBudget={catTab === "despesa"}
+      />
     </div>
   );
 }
