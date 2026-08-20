@@ -5,13 +5,13 @@ import App from "./App.jsx";
 const fontDisplay = "'Fraunces', Georgia, serif";
 const fontBody = "'Inter', system-ui, sans-serif";
 const COLORS = {
-  ink: "#1C2B24",
-  paper: "#F4F1E8",
-  line: "#D8D0BC",
-  rust: "#A8472F",
-  green: "#2F6B4F",
-  slate: "#5B6B63",
-  white: "#FFFDF8",
+  ink: "#10203D",
+  paper: "#F4F5F8",
+  line: "#D6DAE4",
+  rust: "#9C3B3B",
+  green: "#256D5C",
+  slate: "#5B6478",
+  white: "#FFFFFF",
 };
 
 const inputStyle = {
@@ -85,9 +85,9 @@ export default function AuthGate() {
           onSubmit={handleSubmit}
           style={{ background: COLORS.white, padding: 32, borderRadius: 8, border: `1px solid ${COLORS.line}`, width: "100%", maxWidth: 360 }}
         >
-          <h1 style={{ fontFamily: fontDisplay, fontSize: 26, fontWeight: 700, color: COLORS.ink, marginBottom: 4 }}>
-            Livro-Caixa
-          </h1>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+            <img src="/logo-full.png" alt="Alicerce Renatosx" style={{ width: 200, height: "auto" }} />
+          </div>
           <p style={{ color: COLORS.slate, fontSize: 13, marginBottom: 22 }}>
             {mode === "signin" ? "Entre para acessar seus dados" : "Crie sua conta para começar"}
           </p>
