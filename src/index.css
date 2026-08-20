@@ -2,9 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ink: #10203D;
+  --paper: #F4F5F8;
+  --paperDim: #E8EAF0;
+  --line: #D6DAE4;
+  --white: #FFFFFF;
+  --green: #256D5C;
+  --rust: #9C3B3B;
+  --gold: #C9A227;
+  --slate: #5B6478;
+}
+
+[data-theme="dark"] {
+  --ink: #E7EAF2;
+  --paper: #0B1220;
+  --paperDim: #16202E;
+  --line: #26374B;
+  --white: #121B29;
+  --green: #3FA98A;
+  --rust: #E4736E;
+  --gold: #D9B24C;
+  --slate: #8B96A8;
+}
+
 html, body, #root {
   height: 100%;
 }
 body {
   margin: 0;
+  background: var(--paper);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
