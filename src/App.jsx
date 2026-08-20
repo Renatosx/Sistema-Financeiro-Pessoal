@@ -18,6 +18,7 @@ import {
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
 import Provisions from "./Provisions.jsx";
+import Logo from "./Logo.jsx";
 
 const DEFAULT_CATEGORIES = [
   { id: uid(), name: "Salário", type: "receita", color: CATEGORY_PALETTE[0], budget: 0, subcategories: [] },
@@ -56,6 +57,7 @@ const K_CAT = "pf-categories";
 const K_GOALS = "pf-goals";
 const K_ACC = "pf-accounts";
 const K_INV = "pf-investments";
+const K_PUR = "pf-purchases";
 const K_INST = "pf-installments";
 const K_PROV = "pf-provisions";
 const K_SETTINGS = "pf-settings";
@@ -73,9 +75,10 @@ export default function App({ userEmail, onSignOut }) {
   const [goals, setGoals] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [investments, setInvestments] = useState([]);
+  const [purchases, setPurchases] = useState([]);
   const [installments, setInstallments] = useState([]);
   const [provisions, setProvisions] = useState([]);
-  const [settings, setSettings] = useState({ monthlyCommitLimit: 0 });
+  const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {} });
   const [month, setMonth] = useState(monthKey(todayISO()));
 
   const [txModal, setTxModal] = useState(null); // null | {editing?:tx}
@@ -88,15 +91,16 @@ export default function App({ userEmail, onSignOut }) {
 
   useEffect(() => {
     (async () => {
-      const [tx, cat, gl, acc, inv, inst, prov, sett] = await Promise.all([
+      const [tx, cat, gl, acc, inv, pur, inst, prov, sett] = await Promise.all([
         loadKey(K_TX, []),
         loadKey(K_CAT, null),
         loadKey(K_GOALS, []),
         loadKey(K_ACC, null),
         loadKey(K_INV, []),
+        loadKey(K_PUR, []),
         loadKey(K_INST, []),
         loadKey(K_PROV, []),
-        loadKey(K_SETTINGS, { monthlyCommitLimit: 0 }),
+        loadKey(K_SETTINGS, { monthlyCommitLimit: 0, assetClassTargets: {} }),
       ]);
       let finalCat = cat;
       if (!finalCat || finalCat.length === 0) {
@@ -113,9 +117,10 @@ export default function App({ userEmail, onSignOut }) {
       setGoals(gl);
       setAccounts(finalAcc);
       setInvestments(inv);
+      setPurchases(pur);
       setInstallments(inst);
       setProvisions(prov);
-      setSettings(sett || { monthlyCommitLimit: 0 });
+      setSettings({ monthlyCommitLimit: 0, assetClassTargets: {}, ...(sett || {}) });
       setReady(true);
     })();
   }, []);
@@ -125,6 +130,7 @@ export default function App({ userEmail, onSignOut }) {
   const persistGoals = useCallback((next) => { setGoals(next); saveKey(K_GOALS, next); }, []);
   const persistAcc = useCallback((next) => { setAccounts(next); saveKey(K_ACC, next); }, []);
   const persistInvestments = useCallback((next) => { setInvestments(next); saveKey(K_INV, next); }, []);
+  const persistPurchases = useCallback((next) => { setPurchases(next); saveKey(K_PUR, next); }, []);
   const persistInstallments = useCallback((next) => { setInstallments(next); saveKey(K_INST, next); }, []);
   const persistProvisions = useCallback((next) => { setProvisions(next); saveKey(K_PROV, next); }, []);
   const persistSettings = useCallback((next) => { setSettings(next); saveKey(K_SETTINGS, next); }, []);
@@ -254,12 +260,15 @@ export default function App({ userEmail, onSignOut }) {
           className="md:w-56 w-full flex md:flex-col justify-between md:justify-start shrink-0"
           style={{ background: COLORS.ink, color: COLORS.paper }}
         >
-          <div className="px-5 pt-6 pb-4 hidden md:block">
-            <div style={{ fontFamily: fontDisplay, fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>
-              Livro-Caixa
-            </div>
-            <div style={{ fontFamily: fontMono, fontSize: 11, letterSpacing: "0.08em", color: "#9BAFA4", marginTop: 4 }}>
-              CONTROLE PESSOAL
+          <div className="px-5 pt-6 pb-4 hidden md:flex items-center gap-2.5">
+            <Logo size={34} />
+            <div>
+              <div style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 700, lineHeight: 1.1, color: COLORS.paper }}>
+                Alicerce
+              </div>
+              <div style={{ fontFamily: fontMono, fontSize: 10.5, letterSpacing: "0.08em", color: "#8FA0BF", marginTop: 2 }}>
+                RENATOSX
+              </div>
             </div>
           </div>
           <nav className="flex md:flex-col w-full md:mt-4">
@@ -364,8 +373,9 @@ export default function App({ userEmail, onSignOut }) {
           )}
           {tab === "investments" && (
             <Investments
-              investments={investments} accounts={accounts} transactions={transactions}
-              persistInvestments={persistInvestments}
+              investments={investments} accounts={accountBalances} transactions={transactions}
+              purchases={purchases} settings={settings}
+              persistInvestments={persistInvestments} persistPurchases={persistPurchases} persistSettings={persistSettings}
               onDeleteRequest={(inv) => setConfirmDelete({ type: "inv", id: inv.id, label: inv.name })}
             />
           )}
