@@ -169,4 +169,48 @@ function InvestmentModal({ initial, accounts, onClose, onSave }) {
       </Field>
 
       <Field label="Meta de aporte total (opcional)">
-        <input style={inputStyle} type="number" step="0.01" min="0" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)}
+        <input style={inputStyle} type="number" step="0.01" min="0" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="0,00" />
+      </Field>
+
+      <Field label="Próximo passo (opcional)">
+        <textarea
+          style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+          value={nextStep}
+          onChange={(e) => setNextStep(e.target.value)}
+          placeholder="Ex.: Aportar mais R$500 até dezembro"
+        />
+      </Field>
+
+      <Field label="Cor">
+        <div className="flex flex-wrap gap-2">
+          {ACCOUNT_PALETTE.map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              style={{
+                width: 26, height: 26, borderRadius: 26, background: c,
+                border: color === c ? `2px solid ${COLORS.ink}` : "2px solid transparent",
+                boxShadow: color === c ? `0 0 0 2px ${COLORS.white} inset` : "none",
+              }}
+            />
+          ))}
+        </div>
+      </Field>
+
+      <div className="flex gap-2 justify-end mt-5">
+        <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
+        <PrimaryBtn
+          onClick={() => {
+            if (!name.trim() || !accountId) return;
+            onSave({
+              id: initial?.id, name: name.trim(), type, accountId, color,
+              targetAmount: parseFloat(targetAmount) || 0, nextStep: nextStep.trim(),
+            });
+          }}
+        >
+          Salvar
+        </PrimaryBtn>
+      </div>
+    </Modal>
+  );
+}
