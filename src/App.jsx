@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Receipt, FolderTree, Target, Plus, Trash2, Pencil,
   TrendingUp, TrendingDown, Wallet, X, ChevronLeft, ChevronRight,
   PiggyBank, AlertTriangle, Check, ChevronDown, Landmark,
-  Coins, CreditCard, CalendarClock, ArrowRightLeft,
+  Coins, CreditCard, CalendarClock, ArrowRightLeft, Sun, Moon,
 } from "lucide-react";
 import {
   COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
@@ -78,7 +78,7 @@ export default function App({ userEmail, onSignOut }) {
   const [purchases, setPurchases] = useState([]);
   const [installments, setInstallments] = useState([]);
   const [provisions, setProvisions] = useState([]);
-  const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {} });
+  const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" });
   const [month, setMonth] = useState(monthKey(todayISO()));
 
   const [txModal, setTxModal] = useState(null); // null | {editing?:tx}
@@ -100,7 +100,7 @@ export default function App({ userEmail, onSignOut }) {
         loadKey(K_PUR, []),
         loadKey(K_INST, []),
         loadKey(K_PROV, []),
-        loadKey(K_SETTINGS, { monthlyCommitLimit: 0, assetClassTargets: {} }),
+        loadKey(K_SETTINGS, { monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" }),
       ]);
       let finalCat = cat;
       if (!finalCat || finalCat.length === 0) {
@@ -120,7 +120,7 @@ export default function App({ userEmail, onSignOut }) {
       setPurchases(pur);
       setInstallments(inst);
       setProvisions(prov);
-      setSettings({ monthlyCommitLimit: 0, assetClassTargets: {}, ...(sett || {}) });
+      setSettings({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light", ...(sett || {}) });
       setReady(true);
     })();
   }, []);
@@ -134,6 +134,18 @@ export default function App({ userEmail, onSignOut }) {
   const persistInstallments = useCallback((next) => { setInstallments(next); saveKey(K_INST, next); }, []);
   const persistProvisions = useCallback((next) => { setProvisions(next); saveKey(K_PROV, next); }, []);
   const persistSettings = useCallback((next) => { setSettings(next); saveKey(K_SETTINGS, next); }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme === "dark" ? "dark" : "light";
+  }, [settings.theme]);
+
+  const toggleTheme = useCallback(() => {
+    setSettings((prev) => {
+      const next = { ...prev, theme: prev.theme === "dark" ? "light" : "dark" };
+      saveKey(K_SETTINGS, next);
+      return next;
+    });
+  }, []);
 
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const accountById = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
@@ -258,12 +270,12 @@ export default function App({ userEmail, onSignOut }) {
         {/* Sidebar */}
         <aside
           className="md:w-56 w-full flex md:flex-col justify-between md:justify-start shrink-0"
-          style={{ background: COLORS.ink, color: COLORS.paper }}
+          style={{ background: "#10203D", color: "#F4F5F8" }}
         >
           <div className="px-5 pt-6 pb-4 hidden md:flex items-center gap-2.5">
             <Logo size={34} />
             <div>
-              <div style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 700, lineHeight: 1.1, color: COLORS.paper }}>
+              <div style={{ fontFamily: fontDisplay, fontSize: 20, fontWeight: 700, lineHeight: 1.1, color: "#F4F5F8" }}>
                 Alicerce
               </div>
               <div style={{ fontFamily: fontMono, fontSize: 10.5, letterSpacing: "0.08em", color: "#8FA0BF", marginTop: 2 }}>
@@ -312,8 +324,16 @@ export default function App({ userEmail, onSignOut }) {
               {userEmail}
             </span>
             <button
+              onClick={toggleTheme}
+              className="flex items-center gap-1.5"
+              style={{ fontFamily: fontBody, fontSize: 12.5, color: "#F4F5F8", textAlign: "left", opacity: 0.75 }}
+            >
+              {settings.theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+              {settings.theme === "dark" ? "Modo claro" : "Modo escuro"}
+            </button>
+            <button
               onClick={onSignOut}
-              style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.paper, textAlign: "left", opacity: 0.75 }}
+              style={{ fontFamily: fontBody, fontSize: 12.5, color: "#F4F5F8", textAlign: "left", opacity: 0.75 }}
             >
               Sair
             </button>
