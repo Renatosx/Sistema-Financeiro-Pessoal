@@ -130,6 +130,25 @@ export function parseAmountFlexible(str) {
   return isNaN(n) ? null : n;
 }
 
+export function parseOFX(text) {
+  const blocks = text.split(/<STMTTRN>/i).slice(1).map((b) => b.split(/<\/STMTTRN>/i)[0]);
+  const extract = (tag, block) => {
+    const re = new RegExp(`<${tag}>([^<\\r\\n]*)`, "i");
+    const m = block.match(re);
+    return m ? m[1].trim() : "";
+  };
+  return blocks
+    .map((block) => {
+      const dtRaw = extract("DTPOSTED", block);
+      const amtRaw = extract("TRNAMT", block);
+      const memo = extract("MEMO", block) || extract("NAME", block);
+      const date = dtRaw && dtRaw.length >= 8 ? `${dtRaw.slice(0, 4)}-${dtRaw.slice(4, 6)}-${dtRaw.slice(6, 8)}` : null;
+      const amount = amtRaw ? parseFloat(amtRaw.replace(",", ".")) : null;
+      return { date, description: memo, amount };
+    })
+    .filter((t) => t.date && t.amount !== null && !isNaN(t.amount));
+}
+
 /* ------------------------------------------------------------------ */
 /*  Shared styles                                                       */
 /* ------------------------------------------------------------------ */
