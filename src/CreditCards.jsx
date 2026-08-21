@@ -1,14 +1,23 @@
 import React, { useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, Zap, CreditCard as CardIcon, CalendarClock } from "lucide-react";
+import { Plus, Pencil, Trash2, Zap, CreditCard as CardIcon, CalendarClock, Upload } from "lucide-react";
 import {
   COLORS, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
   uid, brl, inputStyle, todayISO,
   Modal, Field, PrimaryBtn, GhostBtn, IconBtn, Panel, EmptyHint, Header,
+  parseCSV, parseOFX, parseDateFlexible, parseAmountFlexible,
 } from "./shared.jsx";
+
+function suggestInvoiceDate(card) {
+  const d = new Date();
+  d.setDate(card.dueDay || 10);
+  if (d < new Date()) d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 export default function CreditCards({ cards, invoices, accounts, persistCards, persistInvoices, onPay, onDeleteRequest }) {
   const [cardModal, setCardModal] = useState(null);
   const [invoiceModal, setInvoiceModal] = useState(null); // card the invoice is being registered for
+  const [importInvoiceCard, setImportInvoiceCard] = useState(null);
   const [confirmPay, setConfirmPay] = useState(null); // invoice being paid
 
   const accountById = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
@@ -117,13 +126,22 @@ export default function CreditCards({ cards, invoices, accounts, persistCards, p
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={() => setInvoiceModal(card)}
-                    className="mt-4 w-full rounded-md flex items-center justify-center gap-1.5"
-                    style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "9px", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
-                  >
-                    <Plus size={14} /> Registrar fatura
-                  </button>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setInvoiceModal(card)}
+                      className="flex-1 rounded-md flex items-center justify-center gap-1.5"
+                      style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "9px", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+                    >
+                      <Plus size={14} /> Registrar
+                    </button>
+                    <button
+                      onClick={() => setImportInvoiceCard(card)}
+                      className="flex-1 rounded-md flex items-center justify-center gap-1.5"
+                      style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "9px", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+                    >
+                      <Upload size={14} /> Importar
+                    </button>
+                  </div>
                 )}
               </div>
             );
@@ -171,6 +189,17 @@ export default function CreditCards({ cards, invoices, accounts, persistCards, p
           onSave={(inv) => {
             persistInvoices([...invoices, { ...inv, id: uid(), cardId: invoiceModal.id, status: "pendente" }]);
             setInvoiceModal(null);
+          }}
+        />
+      )}
+
+      {importInvoiceCard && (
+        <ImportInvoiceModal
+          card={importInvoiceCard}
+          onClose={() => setImportInvoiceCard(null)}
+          onSave={(inv) => {
+            persistInvoices([...invoices, { ...inv, id: uid(), cardId: importInvoiceCard.id, status: "pendente" }]);
+            setImportInvoiceCard(null);
           }}
         />
       )}
@@ -262,14 +291,8 @@ function CreditCardModal({ initial, accounts, onClose, onSave }) {
 }
 
 function InvoiceModal({ card, onClose, onSave }) {
-  const suggestDate = () => {
-    const d = new Date();
-    d.setDate(card.dueDay || 10);
-    if (d < new Date()) d.setMonth(d.getMonth() + 1);
-    return d.toISOString().slice(0, 10);
-  };
   const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState(suggestDate());
+  const [dueDate, setDueDate] = useState(suggestInvoiceDate(card));
 
   return (
     <Modal title={`Registrar fatura — ${card.name}`} onClose={onClose} width={400}>
@@ -290,6 +313,129 @@ function InvoiceModal({ card, onClose, onSave }) {
           Salvar
         </PrimaryBtn>
       </div>
+    </Modal>
+  );
+}
+
+function ImportInvoiceModal({ card, onClose, onSave }) {
+  const [fileType, setFileType] = useState(null); // "csv" | "ofx" | null
+  const [rows, setRows] = useState([]);
+  const [ofxTx, setOfxTx] = useState([]);
+  const [hasHeader, setHasHeader] = useState(true);
+  const [dateCol, setDateCol] = useState(0);
+  const [descCol, setDescCol] = useState(1);
+  const [amountCol, setAmountCol] = useState(2);
+  const [dueDate, setDueDate] = useState(suggestInvoiceDate(card));
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isOfx = /\.ofx$/i.test(file.name);
+    setFileType(isOfx ? "ofx" : "csv");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (isOfx) {
+        setOfxTx(parseOFX(ev.target.result));
+      } else {
+        const { rows: parsed } = parseCSV(ev.target.result);
+        setRows(parsed);
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  const headerRow = rows[0] || [];
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const colOptions = Array.from({ length: headerRow.length }, (_, i) => ({
+    value: i.toString(),
+    label: hasHeader && headerRow[i] ? headerRow[i] : `Coluna ${i + 1}`,
+  }));
+
+  const csvTx = useMemo(() => {
+    return dataRows
+      .map((r) => ({
+        date: parseDateFlexible(r[dateCol] || ""),
+        description: (r[descCol] || "").trim(),
+        amount: parseAmountFlexible(r[amountCol] || ""),
+      }))
+      .filter((t) => t.amount !== null);
+  }, [dataRows, dateCol, descCol, amountCol]);
+
+  const parsedTx = fileType === "ofx" ? ofxTx : csvTx;
+  const total = parsedTx.reduce((a, t) => a + Math.abs(t.amount), 0);
+
+  return (
+    <Modal title={`Importar fatura — ${card.name}`} onClose={onClose} width={620}>
+      {fileType === null ? (
+        <Field label="Arquivo da fatura" hint="Aceita .csv ou .ofx com as compras do cartão. O total é somado automaticamente pra virar o valor da fatura.">
+          <input type="file" accept=".csv,.ofx,text/csv" onChange={handleFile} style={inputStyle} />
+        </Field>
+      ) : (
+        <>
+          {fileType === "csv" && (
+            <>
+              <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
+                <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>A primeira linha é cabeçalho</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field label="Coluna da data">
+                  <select style={inputStyle} value={dateCol} onChange={(e) => setDateCol(Number(e.target.value))}>
+                    {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Coluna da descrição">
+                  <select style={inputStyle} value={descCol} onChange={(e) => setDescCol(Number(e.target.value))}>
+                    {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Coluna do valor">
+                  <select style={inputStyle} value={amountCol} onChange={(e) => setAmountCol(Number(e.target.value))}>
+                    {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+            </>
+          )}
+
+          {fileType === "ofx" && (
+            <div className="rounded-md p-2.5 mb-3" style={{ background: COLORS.paperDim, fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>
+              Arquivo OFX reconhecido — data, descrição e valor já vêm prontos do cartão.
+            </div>
+          )}
+
+          <Field label="Vencimento da fatura">
+            <input style={inputStyle} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          </Field>
+
+          <div className="rounded-md overflow-hidden mb-3" style={{ border: `1px solid ${COLORS.line}` }}>
+            <div className="px-3 py-2 flex items-center justify-between" style={{ background: COLORS.paperDim }}>
+              <span style={{ fontFamily: fontBody, fontSize: 12, fontWeight: 600, color: COLORS.slate }}>{parsedTx.length} compras encontradas</span>
+              <span style={{ fontFamily: fontMono, fontSize: 13, fontWeight: 700, color: COLORS.ink }}>{brl(total)}</span>
+            </div>
+            {parsedTx.slice(0, 5).map((t, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 gap-2" style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}>
+                <span style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.ink }} className="truncate">
+                  {t.date || "?"} · {t.description.slice(0, 34) || "sem descrição"}
+                </span>
+                <span style={{ fontFamily: fontMono, fontSize: 12, color: COLORS.slate, flexShrink: 0 }}>{brl(Math.abs(t.amount))}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2 justify-end mt-5">
+            <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
+            <PrimaryBtn
+              onClick={() => {
+                if (parsedTx.length === 0 || !dueDate) return;
+                onSave({ amount: total, dueDate });
+              }}
+            >
+              Registrar fatura de {brl(total)}
+            </PrimaryBtn>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }
