@@ -70,6 +70,7 @@ export default function Provisions({ provisions, categories, accounts, persistPr
                 <div key={p.id} className="flex items-center justify-between px-4 md:px-5 py-3 gap-3" style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}>
                   <div className="flex items-center gap-3 min-w-0">
                     {p.recurring && <Repeat size={14} style={{ color: COLORS.slate, flexShrink: 0 }} />}
+                    {p.recurring && p.autoLaunch && <Zap size={13} style={{ color: COLORS.gold, flexShrink: 0 }} />}
                     <div className="min-w-0">
                       <div style={{ fontFamily: fontBody, fontSize: 14, fontWeight: 600, color: COLORS.ink }} className="truncate">{p.description}</div>
                       <div style={{ fontFamily: fontBody, fontSize: 12, color: overdue ? COLORS.rust : COLORS.slate }}>
@@ -144,6 +145,7 @@ function ProvisionModal({ initial, categories, accounts, onClose, onSave }) {
   const [amount, setAmount] = useState(initial?.amount?.toString() || "");
   const [expectedDate, setExpectedDate] = useState(initial?.expectedDate || todayISO());
   const [recurring, setRecurring] = useState(initial?.recurring || false);
+  const [autoLaunch, setAutoLaunch] = useState(initial?.autoLaunch || false);
   const [categoryId, setCategoryId] = useState(initial?.categoryId || "");
   const [accountId, setAccountId] = useState(initial?.accountId || accounts?.[0]?.id || "");
 
@@ -204,6 +206,15 @@ function ProvisionModal({ initial, categories, accounts, onClose, onSave }) {
         </span>
       </label>
 
+      {recurring && (
+        <label className="flex items-center gap-2 mt-1 mb-2 cursor-pointer">
+          <input type="checkbox" checked={autoLaunch} onChange={(e) => setAutoLaunch(e.target.checked)} />
+          <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>
+            Lançar automaticamente quando vencer (sem precisar clicar)
+          </span>
+        </label>
+      )}
+
       <div className="flex gap-2 justify-end mt-5">
         <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
         <PrimaryBtn
@@ -212,6 +223,7 @@ function ProvisionModal({ initial, categories, accounts, onClose, onSave }) {
             onSave({
               id: initial?.id, description: description.trim(), type,
               amount: parseFloat(amount), expectedDate, recurring,
+              autoLaunch: recurring ? autoLaunch : false,
               categoryId: categoryId || null, accountId: accountId || null,
               status: initial?.status || "pendente",
             });
