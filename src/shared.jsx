@@ -86,6 +86,50 @@ export function shiftPeriod(type, anchor, delta) {
   return isoDate(nd);
 }
 
+export function parseCSV(text) {
+  const firstLine = text.split("\n")[0] || "";
+  const delim = (firstLine.split(";").length > firstLine.split(",").length) ? ";" : ",";
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const rows = lines.map((line) => {
+    const result = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === delim && !inQuotes) { result.push(cur); cur = ""; continue; }
+      cur += ch;
+    }
+    result.push(cur);
+    return result.map((c) => c.trim());
+  });
+  return { delim, rows };
+}
+
+export function parseDateFlexible(str) {
+  str = (str || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  const m = str.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (y.length === 2) y = "20" + y;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return null;
+}
+
+export function parseAmountFlexible(str) {
+  str = (str || "").trim().replace(/[R$\s]/g, "");
+  if (!str) return null;
+  if (str.includes(",") && str.includes(".")) {
+    str = str.replace(/\./g, "").replace(",", ".");
+  } else if (str.includes(",")) {
+    str = str.replace(",", ".");
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? null : n;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Shared styles                                                       */
 /* ------------------------------------------------------------------ */
