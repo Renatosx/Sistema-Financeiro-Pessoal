@@ -7,17 +7,18 @@ import {
   LayoutDashboard, Receipt, FolderTree, Target, Plus, Trash2, Pencil,
   TrendingUp, TrendingDown, Wallet, X, ChevronLeft, ChevronRight,
   PiggyBank, AlertTriangle, Check, ChevronDown, Landmark,
-  Coins, CreditCard, CalendarClock, ArrowRightLeft, Sun, Moon,
+  Coins, CreditCard, CalendarClock, ArrowRightLeft, Sun, Moon, FileText,
 } from "lucide-react";
 import {
   COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
   uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate,
   inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn,
-  Panel, EmptyHint, Header, Select,
+  Panel, EmptyHint, Header, Select, periodRange, shiftPeriod, PeriodSwitcher,
 } from "./shared.jsx";
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
 import Provisions from "./Provisions.jsx";
+import DRE from "./DRE.jsx";
 import Logo from "./Logo.jsx";
 
 const DEFAULT_CATEGORIES = [
@@ -79,7 +80,10 @@ export default function App({ userEmail, onSignOut }) {
   const [installments, setInstallments] = useState([]);
   const [provisions, setProvisions] = useState([]);
   const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" });
-  const [month, setMonth] = useState(monthKey(todayISO()));
+  const [periodType, setPeriodType] = useState("mes");
+  const [periodAnchor, setPeriodAnchor] = useState(`${todayISO().slice(0, 7)}-01`);
+  const [customStart, setCustomStart] = useState(todayISO());
+  const [customEnd, setCustomEnd] = useState(todayISO());
 
   const [txModal, setTxModal] = useState(null); // null | {editing?:tx}
   const [catModal, setCatModal] = useState(null);
@@ -205,18 +209,32 @@ export default function App({ userEmail, onSignOut }) {
     });
   }, [goals, transactions]);
 
-  const monthTx = useMemo(
-    () => transactions.filter((t) => monthKey(t.date) === month),
-    [transactions, month]
+  const period = useMemo(
+    () => periodRange(periodType, periodAnchor, customStart, customEnd),
+    [periodType, periodAnchor, customStart, customEnd]
+  );
+  const monthsInPeriod = useMemo(() => {
+    if (periodType === "trimestre") return 3;
+    if (periodType === "semestre") return 6;
+    if (periodType === "personalizado") {
+      const days = (new Date(period.end + "T00:00:00") - new Date(period.start + "T00:00:00")) / 86400000 + 1;
+      return Math.max(days / 30.44, 1 / 30.44);
+    }
+    return 1;
+  }, [periodType, period]);
+
+  const periodTx = useMemo(
+    () => transactions.filter((t) => t.date >= period.start && t.date <= period.end),
+    [transactions, period]
   );
   const totals = useMemo(() => {
     let income = 0, expense = 0;
-    monthTx.forEach((t) => {
+    periodTx.forEach((t) => {
       if (t.type === "receita") income += t.amount;
       else if (t.type === "despesa") expense += t.amount;
     });
     return { income, expense, balance: income - expense };
-  }, [monthTx]);
+  }, [periodTx]);
   const totalBalanceAllTime = useMemo(
     () =>
       transactions.reduce((acc, t) => {
@@ -229,7 +247,7 @@ export default function App({ userEmail, onSignOut }) {
 
   const expenseByCategory = useMemo(() => {
     const map = {};
-    monthTx
+    periodTx
       .filter((t) => t.type === "despesa")
       .forEach((t) => {
         map[t.categoryId] = (map[t.categoryId] || 0) + t.amount;
@@ -237,16 +255,17 @@ export default function App({ userEmail, onSignOut }) {
     return Object.entries(map)
       .map(([id, value]) => ({ id, name: catById[id]?.name || "Sem categoria", value, color: catById[id]?.color || COLORS.slate }))
       .sort((a, b) => b.value - a.value);
-  }, [monthTx, catById]);
+  }, [periodTx, catById]);
 
   const budgetData = useMemo(() => {
     return categories
       .filter((c) => c.type === "despesa" && c.budget > 0)
       .map((c) => {
-        const spent = monthTx.filter((t) => t.categoryId === c.id).reduce((a, t) => a + t.amount, 0);
-        return { name: c.name, Orçado: c.budget, Realizado: spent, over: spent > c.budget, color: c.color };
+        const spent = periodTx.filter((t) => t.categoryId === c.id).reduce((a, t) => a + t.amount, 0);
+        const budget = c.budget * monthsInPeriod;
+        return { name: c.name, Orçado: budget, Realizado: spent, over: spent > budget, color: c.color };
       });
-  }, [categories, monthTx]);
+  }, [categories, periodTx, monthsInPeriod]);
 
   if (!ready) {
     return (
@@ -285,6 +304,7 @@ export default function App({ userEmail, onSignOut }) {
               { id: "goals", label: "Metas", icon: Target },
               { id: "installments", label: "Parcelamentos", icon: CreditCard },
               { id: "provisions", label: "Provisões", icon: CalendarClock },
+              { id: "dre", label: "DRE", icon: FileText },
             ].map((item) => {
               const Icon = item.icon;
               const active = tab === item.id;
@@ -354,7 +374,11 @@ export default function App({ userEmail, onSignOut }) {
         <main className="flex-1 px-4 md:px-10 py-6 md:py-8 max-w-6xl">
           {tab === "dashboard" && (
             <Dashboard
-              month={month} setMonth={setMonth}
+              periodType={periodType} setPeriodType={setPeriodType}
+              periodAnchor={periodAnchor} setPeriodAnchor={setPeriodAnchor}
+              customStart={customStart} setCustomStart={setCustomStart}
+              customEnd={customEnd} setCustomEnd={setCustomEnd}
+              periodLabel={period.label}
               totals={totals} totalBalanceAllTime={totalBalanceAllTime}
               expenseByCategory={expenseByCategory} budgetData={budgetData}
               goals={goalBalances} accountBalances={accountBalances}
@@ -424,6 +448,9 @@ export default function App({ userEmail, onSignOut }) {
               onLaunch={handleLaunchProvision}
               onDeleteRequest={(p) => setConfirmDelete({ type: "prov", id: p.id, label: p.description })}
             />
+          )}
+          {tab === "dre" && (
+            <DRE transactions={transactions} categories={categories} />
           )}
         </main>
       </div>
@@ -551,13 +578,21 @@ export default function App({ userEmail, onSignOut }) {
 /* ------------------------------------------------------------------ */
 /*  Dashboard                                                           */
 /* ------------------------------------------------------------------ */
-function Dashboard({ month, setMonth, totals, totalBalanceAllTime, expenseByCategory, budgetData, goals, accountBalances }) {
+function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, customStart, setCustomStart, customEnd, setCustomEnd, periodLabel, totals, totalBalanceAllTime, expenseByCategory, budgetData, goals, accountBalances }) {
   return (
     <div>
       <Header
         title="Painel"
-        subtitle="Visão geral do mês selecionado"
-        right={<MonthSwitcher month={month} setMonth={setMonth} />}
+        subtitle="Visão geral do período selecionado"
+        right={
+          <PeriodSwitcher
+            periodType={periodType} setPeriodType={setPeriodType}
+            periodAnchor={periodAnchor} setPeriodAnchor={setPeriodAnchor}
+            customStart={customStart} setCustomStart={setCustomStart}
+            customEnd={customEnd} setCustomEnd={setCustomEnd}
+            label={periodLabel}
+          />
+        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
@@ -686,18 +721,6 @@ function SummaryCard({ label, value, icon: Icon, tone, stamp }) {
       </div>
       <div style={{ fontFamily: fontMono, fontSize: 24, fontWeight: 600, color: tone }}>{brl(value)}</div>
       {stamp && <div className="mt-2"><Stamp positive={value >= 0} /></div>}
-    </div>
-  );
-}
-
-function MonthSwitcher({ month, setMonth }) {
-  return (
-    <div className="flex items-center gap-1 rounded-md" style={{ border: `1px solid ${COLORS.line}`, background: COLORS.white }}>
-      <IconBtn onClick={() => setMonth(shiftMonth(month, -1))} title="Mês anterior"><ChevronLeft size={16} /></IconBtn>
-      <span style={{ fontFamily: fontMono, fontSize: 13, minWidth: 130, textAlign: "center", textTransform: "capitalize" }}>
-        {monthLabel(month)}
-      </span>
-      <IconBtn onClick={() => setMonth(shiftMonth(month, 1))} title="Próximo mês"><ChevronRight size={16} /></IconBtn>
     </div>
   );
 }
