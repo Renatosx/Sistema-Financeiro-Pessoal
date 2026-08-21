@@ -8,19 +8,20 @@ import {
   TrendingUp, TrendingDown, Wallet, X, ChevronLeft, ChevronRight,
   PiggyBank, AlertTriangle, Check, ChevronDown, Landmark,
   Coins, CreditCard, CalendarClock, ArrowRightLeft, Sun, Moon, FileText,
-  Printer, Upload, Download,
+  Printer, Upload, Download, Repeat,
 } from "lucide-react";
 import {
   COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
   uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate,
   inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn,
   Panel, EmptyHint, Header, Select, periodRange, shiftPeriod, PeriodSwitcher,
-  parseCSV, parseDateFlexible, parseAmountFlexible,
+  parseCSV, parseDateFlexible, parseAmountFlexible, parseOFX,
 } from "./shared.jsx";
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
 import Provisions from "./Provisions.jsx";
 import DRE from "./DRE.jsx";
+import CreditCards from "./CreditCards.jsx";
 import Logo from "./Logo.jsx";
 
 const DEFAULT_CATEGORIES = [
@@ -63,6 +64,9 @@ const K_INV = "pf-investments";
 const K_PUR = "pf-purchases";
 const K_INST = "pf-installments";
 const K_PROV = "pf-provisions";
+const K_CARDS = "pf-creditcards";
+const K_INVOICES = "pf-invoices";
+const K_POCKETS = "pf-pockets";
 const K_SETTINGS = "pf-settings";
 
 import { loadKey, saveKey } from "./storage.js";
@@ -81,6 +85,9 @@ export default function App({ userEmail, onSignOut }) {
   const [purchases, setPurchases] = useState([]);
   const [installments, setInstallments] = useState([]);
   const [provisions, setProvisions] = useState([]);
+  const [creditCards, setCreditCards] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [pockets, setPockets] = useState([]);
   const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" });
   const [periodType, setPeriodType] = useState("mes");
   const [periodAnchor, setPeriodAnchor] = useState(`${todayISO().slice(0, 7)}-01`);
@@ -99,7 +106,7 @@ export default function App({ userEmail, onSignOut }) {
 
   useEffect(() => {
     (async () => {
-      const [tx, cat, gl, acc, inv, pur, inst, prov, sett] = await Promise.all([
+      const [tx, cat, gl, acc, inv, pur, inst, prov, cards, invs, pockets_, sett] = await Promise.all([
         loadKey(K_TX, []),
         loadKey(K_CAT, null),
         loadKey(K_GOALS, []),
@@ -108,6 +115,9 @@ export default function App({ userEmail, onSignOut }) {
         loadKey(K_PUR, []),
         loadKey(K_INST, []),
         loadKey(K_PROV, []),
+        loadKey(K_CARDS, []),
+        loadKey(K_INVOICES, []),
+        loadKey(K_POCKETS, []),
         loadKey(K_SETTINGS, { monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" }),
       ]);
       let finalCat = cat;
@@ -128,6 +138,9 @@ export default function App({ userEmail, onSignOut }) {
       setPurchases(pur);
       setInstallments(inst);
       setProvisions(prov);
+      setCreditCards(cards);
+      setInvoices(invs);
+      setPockets(pockets_);
       setSettings({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light", ...(sett || {}) });
       setReady(true);
     })();
@@ -141,6 +154,9 @@ export default function App({ userEmail, onSignOut }) {
   const persistPurchases = useCallback((next) => { setPurchases(next); saveKey(K_PUR, next); }, []);
   const persistInstallments = useCallback((next) => { setInstallments(next); saveKey(K_INST, next); }, []);
   const persistProvisions = useCallback((next) => { setProvisions(next); saveKey(K_PROV, next); }, []);
+  const persistCreditCards = useCallback((next) => { setCreditCards(next); saveKey(K_CARDS, next); }, []);
+  const persistInvoices = useCallback((next) => { setInvoices(next); saveKey(K_INVOICES, next); }, []);
+  const persistPockets = useCallback((next) => { setPockets(next); saveKey(K_POCKETS, next); }, []);
   const persistSettings = useCallback((next) => { setSettings(next); saveKey(K_SETTINGS, next); }, []);
 
   useEffect(() => {
@@ -234,6 +250,24 @@ export default function App({ userEmail, onSignOut }) {
       return next;
     });
   }, [accounts]);
+
+  const handlePayInvoice = useCallback((inv) => {
+    const card = creditCards.find((c) => c.id === inv.cardId);
+    const fallbackCat = categories.find((c) => c.type === "despesa" && (c.name === "Cartão de Crédito" || c.name === "Outros")) || categories.find((c) => c.type === "despesa");
+    const tx = {
+      id: uid(), type: "despesa",
+      categoryId: fallbackCat?.id || null, subcategoryId: null,
+      accountId: card?.accountId || accounts[0]?.id || null,
+      amount: inv.amount, date: todayISO(),
+      description: `Fatura ${card?.name || "cartão"} — venc. ${new Date(inv.dueDate + "T00:00:00").toLocaleDateString("pt-BR")}`,
+    };
+    setTransactions((prev) => { const next = [tx, ...prev]; saveKey(K_TX, next); return next; });
+    setInvoices((prev) => {
+      const next = prev.map((x) => (x.id === inv.id ? { ...x, status: "pago" } : x));
+      saveKey(K_INVOICES, next);
+      return next;
+    });
+  }, [creditCards, categories, accounts]);
 
   const accountBalances = useMemo(() => {
     return accounts.map((a) => {
@@ -356,7 +390,8 @@ export default function App({ userEmail, onSignOut }) {
               { id: "accounts", label: "Bancos", icon: Landmark },
               { id: "investments", label: "Investimentos", icon: Coins },
               { id: "goals", label: "Metas", icon: Target },
-              { id: "installments", label: "Parcelamentos", icon: CreditCard },
+              { id: "installments", label: "Parcelamentos", icon: Repeat },
+              { id: "creditcards", label: "Cartões", icon: CreditCard },
               { id: "provisions", label: "Provisões", icon: CalendarClock },
               { id: "dre", label: "DRE", icon: FileText },
             ].map((item) => {
@@ -459,9 +494,11 @@ export default function App({ userEmail, onSignOut }) {
           {tab === "accounts" && (
             <Accounts
               accountBalances={accountBalances}
+              pockets={pockets} persistPockets={persistPockets}
               onAdd={() => setAccModal({})}
               onEdit={(a) => setAccModal({ editing: a })}
               onDelete={(a) => setConfirmDelete({ type: "acc", id: a.id, label: a.name })}
+              onDeletePocket={(p) => setConfirmDelete({ type: "pocket", id: p.id, label: p.name })}
             />
           )}
           {tab === "categories" && (
@@ -502,6 +539,14 @@ export default function App({ userEmail, onSignOut }) {
               persistInstallments={persistInstallments} persistSettings={persistSettings}
               onPay={handlePayInstallment}
               onDeleteRequest={(inst) => setConfirmDelete({ type: "inst", id: inst.id, label: inst.description })}
+            />
+          )}
+          {tab === "creditcards" && (
+            <CreditCards
+              cards={creditCards} invoices={invoices} accounts={accounts}
+              persistCards={persistCreditCards} persistInvoices={persistInvoices}
+              onPay={handlePayInvoice}
+              onDeleteRequest={(c) => setConfirmDelete({ type: "card", id: c.id, label: c.name })}
             />
           )}
           {tab === "provisions" && (
@@ -631,6 +676,11 @@ export default function App({ userEmail, onSignOut }) {
                 if (confirmDelete.type === "acc") persistAcc(accounts.filter((a) => a.id !== confirmDelete.id));
                 if (confirmDelete.type === "inv") persistInvestments(investments.filter((x) => x.id !== confirmDelete.id));
                 if (confirmDelete.type === "inst") persistInstallments(installments.filter((x) => x.id !== confirmDelete.id));
+                if (confirmDelete.type === "card") {
+                  persistCreditCards(creditCards.filter((x) => x.id !== confirmDelete.id));
+                  persistInvoices(invoices.filter((x) => x.cardId !== confirmDelete.id));
+                }
+                if (confirmDelete.type === "pocket") persistPockets(pockets.filter((x) => x.id !== confirmDelete.id));
                 if (confirmDelete.type === "prov") persistProvisions(provisions.filter((x) => x.id !== confirmDelete.id));
                 setConfirmDelete(null);
               }}
@@ -1049,13 +1099,21 @@ function CategoryGroup({ title, items, onEdit, onDelete, onAddSub, onDeleteSub, 
 /* ------------------------------------------------------------------ */
 /*  Accounts (Bancos)                                                   */
 /* ------------------------------------------------------------------ */
-function Accounts({ accountBalances, onAdd, onEdit, onDelete }) {
+function Accounts({ accountBalances, pockets, persistPockets, onAdd, onEdit, onDelete, onDeletePocket }) {
+  const [pocketModal, setPocketModal] = useState(null); // {accountId, editing?}
+  const [contribPocket, setContribPocket] = useState(null);
   const total = accountBalances.reduce((a, b) => a + b.balance, 0);
+  const pocketsByAccount = useMemo(() => {
+    const map = {};
+    pockets.forEach((p) => { (map[p.accountId] ||= []).push(p); });
+    return map;
+  }, [pockets]);
+
   return (
     <div>
       <Header
         title="Bancos"
-        subtitle="Contas, carteiras e onde seu dinheiro está"
+        subtitle="Contas, carteiras, caixinhas e onde seu dinheiro está"
         right={
           <button
             onClick={onAdd}
@@ -1081,34 +1139,185 @@ function Accounts({ accountBalances, onAdd, onEdit, onDelete }) {
         <div className="mt-8"><EmptyHint text="Nenhum banco cadastrado ainda." /></div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
-          {accountBalances.map((a) => (
-            <div key={a.id} className="rounded-md p-4" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="flex items-center justify-center rounded-md"
-                    style={{ width: 30, height: 30, background: `${a.color}1A`, color: a.color, flexShrink: 0 }}
-                  >
-                    <Landmark size={15} />
-                  </span>
-                  <span style={{ fontFamily: fontBody, fontSize: 14.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{a.name}</span>
+          {accountBalances.map((a) => {
+            const accPockets = pocketsByAccount[a.id] || [];
+            const emCaixinhas = accPockets.reduce((sum, p) => sum + p.currentAmount, 0);
+            const livre = a.balance - emCaixinhas;
+            return (
+              <div key={a.id} className="rounded-md p-4" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="flex items-center justify-center rounded-md"
+                      style={{ width: 30, height: 30, background: `${a.color}1A`, color: a.color, flexShrink: 0 }}
+                    >
+                      <Landmark size={15} />
+                    </span>
+                    <span style={{ fontFamily: fontBody, fontSize: 14.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{a.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <IconBtn onClick={() => onEdit(a)} title="Editar"><Pencil size={13} /></IconBtn>
+                    <IconBtn onClick={() => onDelete(a)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <IconBtn onClick={() => onEdit(a)} title="Editar"><Pencil size={13} /></IconBtn>
-                  <IconBtn onClick={() => onDelete(a)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
+                <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: a.balance >= 0 ? COLORS.green : COLORS.rust, marginTop: 12 }}>
+                  {brl(a.balance)}
                 </div>
+                <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
+                  Saldo inicial: {brl(a.initialBalance || 0)}
+                </div>
+
+                {accPockets.length > 0 && (
+                  <div className="mt-3 rounded-md p-2.5" style={{ background: COLORS.paperDim }}>
+                    <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>Livre (fora das caixinhas)</div>
+                    <div style={{ fontFamily: fontMono, fontSize: 14, fontWeight: 600, color: livre >= 0 ? COLORS.ink : COLORS.rust }}>{brl(livre)}</div>
+                  </div>
+                )}
+
+                {accPockets.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {accPockets.map((p) => {
+                      const pct = p.targetAmount > 0 ? Math.min(100, (p.currentAmount / p.targetAmount) * 100) : null;
+                      return (
+                        <div key={p.id} className="rounded-md p-2.5" style={{ border: `1px solid ${COLORS.line}` }}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <PiggyBank size={13} style={{ color: p.color, flexShrink: 0 }} />
+                              <span style={{ fontFamily: fontBody, fontSize: 12.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{p.name}</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <IconBtn onClick={() => setContribPocket(p)} title="Aportar / retirar"><Plus size={12} /></IconBtn>
+                              <IconBtn onClick={() => setPocketModal({ accountId: a.id, editing: p })} title="Editar"><Pencil size={12} /></IconBtn>
+                              <IconBtn onClick={() => onDeletePocket(p)} title="Excluir" color={COLORS.rust}><Trash2 size={12} /></IconBtn>
+                            </div>
+                          </div>
+                          <div className="flex items-baseline justify-between mt-1">
+                            <span style={{ fontFamily: fontMono, fontSize: 14, fontWeight: 600, color: COLORS.ink }}>{brl(p.currentAmount)}</span>
+                            {p.targetAmount > 0 && (
+                              <span style={{ fontFamily: fontMono, fontSize: 11, color: COLORS.slate }}>meta: {brl(p.targetAmount)}</span>
+                            )}
+                          </div>
+                          {pct !== null && (
+                            <div className="mt-1.5" style={{ height: 5, borderRadius: 4, background: COLORS.paperDim, overflow: "hidden" }}>
+                              <div style={{ width: `${pct}%`, height: "100%", background: p.color }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setPocketModal({ accountId: a.id })}
+                  className="mt-3 w-full rounded-md flex items-center justify-center gap-1.5"
+                  style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 12.5, padding: "7px", border: `1px dashed ${COLORS.line}`, color: COLORS.slate }}
+                >
+                  <Plus size={13} /> Nova caixinha
+                </button>
               </div>
-              <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: a.balance >= 0 ? COLORS.green : COLORS.rust, marginTop: 12 }}>
-                {brl(a.balance)}
-              </div>
-              <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
-                Saldo inicial: {brl(a.initialBalance || 0)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {pocketModal && (
+        <PocketModal
+          initial={pocketModal.editing}
+          onClose={() => setPocketModal(null)}
+          onSave={(p) => {
+            if (pocketModal.editing) {
+              persistPockets(pockets.map((x) => (x.id === p.id ? p : x)));
+            } else {
+              persistPockets([...pockets, { ...p, id: uid(), accountId: pocketModal.accountId, currentAmount: 0 }]);
+            }
+            setPocketModal(null);
+          }}
+        />
+      )}
+
+      {contribPocket && (
+        <ContributePocketModal
+          pocket={contribPocket}
+          onClose={() => setContribPocket(null)}
+          onConfirm={(delta) => {
+            persistPockets(
+              pockets.map((p) => (p.id === contribPocket.id ? { ...p, currentAmount: Math.max(0, p.currentAmount + delta) } : p))
+            );
+            setContribPocket(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function PocketModal({ initial, onClose, onSave }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [targetAmount, setTargetAmount] = useState(initial?.targetAmount?.toString() || "");
+  const [color, setColor] = useState(initial?.color || ACCOUNT_PALETTE[0]);
+
+  return (
+    <Modal title={initial ? "Editar caixinha" : "Nova caixinha"} onClose={onClose} width={400}>
+      <Field label="Nome da caixinha">
+        <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Viagem, Reserva de emergência" autoFocus />
+      </Field>
+      <Field label="Meta (opcional)">
+        <input style={inputStyle} type="number" step="0.01" min="0" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="0,00" />
+      </Field>
+      <Field label="Cor">
+        <div className="flex flex-wrap gap-2">
+          {ACCOUNT_PALETTE.map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              style={{
+                width: 26, height: 26, borderRadius: 26, background: c,
+                border: color === c ? `2px solid ${COLORS.ink}` : "2px solid transparent",
+                boxShadow: color === c ? `0 0 0 2px ${COLORS.white} inset` : "none",
+              }}
+            />
+          ))}
+        </div>
+      </Field>
+      <div className="flex gap-2 justify-end mt-5">
+        <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
+        <PrimaryBtn
+          onClick={() => {
+            if (!name.trim()) return;
+            onSave({
+              id: initial?.id, name: name.trim(), color,
+              targetAmount: parseFloat(targetAmount) || 0,
+              currentAmount: initial?.currentAmount || 0,
+            });
+          }}
+        >
+          Salvar
+        </PrimaryBtn>
+      </div>
+    </Modal>
+  );
+}
+
+function ContributePocketModal({ pocket, onClose, onConfirm }) {
+  const [amount, setAmount] = useState("");
+  return (
+    <Modal title={`Aportar / retirar — ${pocket.name}`} onClose={onClose} width={380}>
+      <Field label="Valor" hint={`Saldo atual: ${brl(pocket.currentAmount)}`}>
+        <input style={inputStyle} type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" autoFocus />
+      </Field>
+      <div className="flex gap-2 justify-end mt-5">
+        <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
+        <button
+          onClick={() => { if (parseFloat(amount) > 0) onConfirm(-parseFloat(amount)); }}
+          className="rounded-md"
+          style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 14, padding: "10px 16px", border: `1px solid ${COLORS.line}`, color: COLORS.rust }}
+        >
+          Retirar
+        </button>
+        <PrimaryBtn onClick={() => { if (parseFloat(amount) > 0) onConfirm(parseFloat(amount)); }}>Aportar</PrimaryBtn>
+      </div>
+    </Modal>
   );
 }
 
@@ -1506,7 +1715,9 @@ function AccountModal({ initial, onClose, onSave }) {
 }
 
 function ImportTransactionsModal({ accounts, onClose, onImport }) {
+  const [fileType, setFileType] = useState(null); // "csv" | "ofx" | null
   const [rows, setRows] = useState([]);
+  const [ofxTransactions, setOfxTransactions] = useState([]);
   const [hasHeader, setHasHeader] = useState(true);
   const [dateCol, setDateCol] = useState(0);
   const [descCol, setDescCol] = useState(1);
@@ -1516,10 +1727,16 @@ function ImportTransactionsModal({ accounts, onClose, onImport }) {
   const handleFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const isOfx = /\.ofx$/i.test(file.name);
+    setFileType(isOfx ? "ofx" : "csv");
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const { rows: parsed } = parseCSV(ev.target.result);
-      setRows(parsed);
+      if (isOfx) {
+        setOfxTransactions(parseOFX(ev.target.result));
+      } else {
+        const { rows: parsed } = parseCSV(ev.target.result);
+        setRows(parsed);
+      }
     };
     reader.readAsText(file, "utf-8");
   };
@@ -1532,7 +1749,7 @@ function ImportTransactionsModal({ accounts, onClose, onImport }) {
     label: hasHeader && headerRow[i] ? headerRow[i] : `Coluna ${i + 1}`,
   }));
 
-  const parsedTransactions = useMemo(() => {
+  const csvTransactions = useMemo(() => {
     return dataRows
       .map((r) => ({
         date: parseDateFlexible(r[dateCol] || ""),
@@ -1542,36 +1759,49 @@ function ImportTransactionsModal({ accounts, onClose, onImport }) {
       .filter((t) => t.date && t.amount !== null);
   }, [dataRows, dateCol, descCol, amountCol]);
 
+  const parsedTransactions = fileType === "ofx" ? ofxTransactions : csvTransactions;
+  const totalRows = fileType === "ofx" ? ofxTransactions.length : dataRows.length;
+
   return (
-    <Modal title="Importar extrato (CSV)" onClose={onClose} width={620}>
-      {rows.length === 0 ? (
-        <Field label="Arquivo CSV do banco" hint="Exporte o extrato do seu banco em CSV e selecione o arquivo aqui.">
-          <input type="file" accept=".csv,text/csv" onChange={handleFile} style={inputStyle} />
+    <Modal title="Importar extrato (CSV ou OFX)" onClose={onClose} width={620}>
+      {fileType === null ? (
+        <Field label="Arquivo do banco" hint="Aceita .csv ou .ofx. Bancos como Inter e Santander exportam OFX direto pelo internet banking (Extrato → Exportar).">
+          <input type="file" accept=".csv,.ofx,text/csv" onChange={handleFile} style={inputStyle} />
         </Field>
       ) : (
         <>
-          <label className="flex items-center gap-2 mb-3 cursor-pointer">
-            <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
-            <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>A primeira linha é cabeçalho</span>
-          </label>
+          {fileType === "csv" && (
+            <>
+              <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
+                <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>A primeira linha é cabeçalho</span>
+              </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field label="Coluna da data">
-              <select style={inputStyle} value={dateCol} onChange={(e) => setDateCol(Number(e.target.value))}>
-                {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Coluna da descrição">
-              <select style={inputStyle} value={descCol} onChange={(e) => setDescCol(Number(e.target.value))}>
-                {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Coluna do valor">
-              <select style={inputStyle} value={amountCol} onChange={(e) => setAmountCol(Number(e.target.value))}>
-                {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field label="Coluna da data">
+                  <select style={inputStyle} value={dateCol} onChange={(e) => setDateCol(Number(e.target.value))}>
+                    {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Coluna da descrição">
+                  <select style={inputStyle} value={descCol} onChange={(e) => setDescCol(Number(e.target.value))}>
+                    {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Coluna do valor">
+                  <select style={inputStyle} value={amountCol} onChange={(e) => setAmountCol(Number(e.target.value))}>
+                    {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+            </>
+          )}
+
+          {fileType === "ofx" && (
+            <div className="rounded-md p-2.5 mb-3" style={{ background: COLORS.paperDim, fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>
+              Arquivo OFX reconhecido — data, descrição e valor já vêm prontos do banco.
+            </div>
+          )}
 
           <Field label="Conta de destino">
             <select style={inputStyle} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
@@ -1581,22 +1811,18 @@ function ImportTransactionsModal({ accounts, onClose, onImport }) {
 
           <div className="rounded-md overflow-hidden mb-3" style={{ border: `1px solid ${COLORS.line}` }}>
             <div className="px-3 py-2" style={{ background: COLORS.paperDim, fontFamily: fontBody, fontSize: 12, fontWeight: 600, color: COLORS.slate }}>
-              Prévia — {parsedTransactions.length} de {dataRows.length} linhas reconhecidas
+              Prévia — {parsedTransactions.length} de {totalRows} linhas reconhecidas
             </div>
-            {dataRows.slice(0, 5).map((r, i) => {
-              const date = parseDateFlexible(r[dateCol] || "");
-              const amount = parseAmountFlexible(r[amountCol] || "");
-              return (
-                <div key={i} className="flex items-center justify-between px-3 py-2 gap-2" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
-                  <span style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.ink }} className="truncate">
-                    {date || "data?"} · {(r[descCol] || "").slice(0, 34) || "sem descrição"}
-                  </span>
-                  <span style={{ fontFamily: fontMono, fontSize: 12, color: amount === null ? COLORS.slate : amount >= 0 ? COLORS.green : COLORS.rust, flexShrink: 0 }}>
-                    {amount !== null ? brl(amount) : "valor?"}
-                  </span>
-                </div>
-              );
-            })}
+            {parsedTransactions.slice(0, 5).map((t, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 gap-2" style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}>
+                <span style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.ink }} className="truncate">
+                  {t.date} · {t.description.slice(0, 34) || "sem descrição"}
+                </span>
+                <span style={{ fontFamily: fontMono, fontSize: 12, color: t.amount >= 0 ? COLORS.green : COLORS.rust, flexShrink: 0 }}>
+                  {brl(t.amount)}
+                </span>
+              </div>
+            ))}
           </div>
 
           <p style={{ fontFamily: fontBody, fontSize: 11.5, color: COLORS.slate, marginBottom: 4 }}>
