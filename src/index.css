@@ -34,3 +34,20 @@ body {
   background: var(--paper);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+@media print {
+  aside, .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  table {
+    font-size: 11px !important;
+  }
+}
