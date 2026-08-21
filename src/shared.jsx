@@ -149,6 +149,13 @@ export function parseOFX(text) {
     .filter((t) => t.date && t.amount !== null && !isNaN(t.amount));
 }
 
+export function matchCategoryRule(description, rules) {
+  if (!description || !rules?.length) return null;
+  const desc = description.toLowerCase();
+  const rule = rules.find((r) => r.keyword && desc.includes(r.keyword.toLowerCase()));
+  return rule ? { categoryId: rule.categoryId, subcategoryId: rule.subcategoryId || null } : null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Shared styles                                                       */
 /* ------------------------------------------------------------------ */
