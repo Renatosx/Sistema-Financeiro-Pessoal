@@ -8,12 +8,14 @@ import {
   TrendingUp, TrendingDown, Wallet, X, ChevronLeft, ChevronRight,
   PiggyBank, AlertTriangle, Check, ChevronDown, Landmark,
   Coins, CreditCard, CalendarClock, ArrowRightLeft, Sun, Moon, FileText,
+  Printer, Upload, Download,
 } from "lucide-react";
 import {
   COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
   uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate,
   inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn,
   Panel, EmptyHint, Header, Select, periodRange, shiftPeriod, PeriodSwitcher,
+  parseCSV, parseDateFlexible, parseAmountFlexible,
 } from "./shared.jsx";
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
@@ -92,6 +94,8 @@ export default function App({ userEmail, onSignOut }) {
   const [contribGoal, setContribGoal] = useState(null);
   const [accModal, setAccModal] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // {type,id,label}
+  const [importModal, setImportModal] = useState(false);
+  const [annualYear, setAnnualYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
     (async () => {
@@ -142,6 +146,56 @@ export default function App({ userEmail, onSignOut }) {
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme === "dark" ? "dark" : "light";
   }, [settings.theme]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const today = todayISO();
+    const due = provisions.filter((p) => p.recurring && p.autoLaunch && p.status !== "concluido" && p.expectedDate <= today);
+    due.forEach((p) => handleLaunchProvision(p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  const handleBackup = useCallback(() => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      transactions, categories, goals, accounts, investments, purchases, installments, provisions, settings,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `alicerce-backup-${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [transactions, categories, goals, accounts, investments, purchases, installments, provisions, settings]);
+
+  const handleImportTransactions = useCallback((parsed, targetAccountId) => {
+    const fallbackDespesa = categories.find((c) => c.type === "despesa" && c.name === "Outros") || categories.find((c) => c.type === "despesa");
+    const fallbackReceita = categories.find((c) => c.type === "receita");
+    const newTx = parsed.map((p) => ({
+      id: uid(),
+      type: p.amount < 0 ? "despesa" : "receita",
+      categoryId: (p.amount < 0 ? fallbackDespesa?.id : fallbackReceita?.id) || null,
+      subcategoryId: null,
+      accountId: targetAccountId,
+      amount: Math.abs(p.amount),
+      date: p.date,
+      description: p.description,
+    }));
+    persistTx([...newTx, ...transactions]);
+    setImportModal(false);
+  }, [categories, transactions, persistTx]);
+
+  const monthNamesShort = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const annualData = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const mm = String(i + 1).padStart(2, "0");
+      const monthTxs = transactions.filter((t) => t.date.startsWith(`${annualYear}-${mm}`));
+      const income = monthTxs.filter((t) => t.type === "receita").reduce((a, t) => a + t.amount, 0);
+      const expense = monthTxs.filter((t) => t.type === "despesa").reduce((a, t) => a + t.amount, 0);
+      return { name: monthNamesShort[i], Receitas: income, Despesas: expense, Saldo: income - expense };
+    });
+  }, [transactions, annualYear]);
 
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const accountById = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
@@ -362,6 +416,13 @@ export default function App({ userEmail, onSignOut }) {
               </button>
             </div>
             <button
+              onClick={handleBackup}
+              className="flex items-center gap-1.5"
+              style={{ fontFamily: fontBody, fontSize: 12.5, color: "#F4F5F8", textAlign: "left", opacity: 0.75 }}
+            >
+              <Download size={13} /> Backup dos dados
+            </button>
+            <button
               onClick={onSignOut}
               style={{ fontFamily: fontBody, fontSize: 12.5, color: "#F4F5F8", textAlign: "left", opacity: 0.75 }}
             >
@@ -382,6 +443,7 @@ export default function App({ userEmail, onSignOut }) {
               totals={totals} totalBalanceAllTime={totalBalanceAllTime}
               expenseByCategory={expenseByCategory} budgetData={budgetData}
               goals={goalBalances} accountBalances={accountBalances}
+              annualData={annualData} annualYear={annualYear} setAnnualYear={setAnnualYear}
             />
           )}
           {tab === "transactions" && (
@@ -391,6 +453,7 @@ export default function App({ userEmail, onSignOut }) {
               onAdd={() => setTxModal({})}
               onEdit={(t) => setTxModal({ editing: t })}
               onDelete={(t) => setConfirmDelete({ type: "tx", id: t.id, label: t.description || catById[t.categoryId]?.name })}
+              onImport={() => setImportModal(true)}
             />
           )}
           {tab === "accounts" && (
@@ -545,6 +608,14 @@ export default function App({ userEmail, onSignOut }) {
         />
       )}
 
+      {importModal && (
+        <ImportTransactionsModal
+          accounts={accounts}
+          onClose={() => setImportModal(false)}
+          onImport={handleImportTransactions}
+        />
+      )}
+
       {confirmDelete && (
         <Modal title="Confirmar exclusão" onClose={() => setConfirmDelete(null)} width={380}>
           <p style={{ fontFamily: fontBody, fontSize: 14, color: COLORS.slate, marginBottom: 18 }}>
@@ -578,7 +649,7 @@ export default function App({ userEmail, onSignOut }) {
 /* ------------------------------------------------------------------ */
 /*  Dashboard                                                           */
 /* ------------------------------------------------------------------ */
-function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, customStart, setCustomStart, customEnd, setCustomEnd, periodLabel, totals, totalBalanceAllTime, expenseByCategory, budgetData, goals, accountBalances }) {
+function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, customStart, setCustomStart, customEnd, setCustomEnd, periodLabel, totals, totalBalanceAllTime, expenseByCategory, budgetData, goals, accountBalances, annualData, annualYear, setAnnualYear }) {
   return (
     <div>
       <Header
@@ -689,6 +760,31 @@ function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, c
           </Panel>
         </div>
       )}
+
+      <div className="mt-8">
+        <Panel
+          title="Visão anual"
+          right={
+            <div className="flex items-center gap-1 rounded-md" style={{ border: `1px solid ${COLORS.line}`, background: COLORS.white }}>
+              <IconBtn onClick={() => setAnnualYear(annualYear - 1)} title="Ano anterior"><ChevronLeft size={16} /></IconBtn>
+              <span style={{ fontFamily: fontMono, fontSize: 13, minWidth: 50, textAlign: "center" }}>{annualYear}</span>
+              <IconBtn onClick={() => setAnnualYear(annualYear + 1)} title="Próximo ano"><ChevronRight size={16} /></IconBtn>
+            </div>
+          }
+        >
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={annualData} margin={{ left: -10 }}>
+              <CartesianGrid stroke={COLORS.line} vertical={false} />
+              <XAxis dataKey="name" tick={{ fontFamily: fontBody, fontSize: 11, fill: COLORS.slate }} />
+              <YAxis tick={{ fontFamily: fontMono, fontSize: 10, fill: COLORS.slate }} />
+              <Tooltip formatter={(v) => brl(v)} contentStyle={{ fontFamily: fontBody, fontSize: 13, borderRadius: 6, border: `1px solid ${COLORS.line}` }} />
+              <Legend wrapperStyle={{ fontFamily: fontBody, fontSize: 12 }} />
+              <Bar dataKey="Receitas" fill={COLORS.green} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="Despesas" fill={COLORS.rust} radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -728,7 +824,7 @@ function SummaryCard({ label, value, icon: Icon, tone, stamp }) {
 /* ------------------------------------------------------------------ */
 /*  Transactions                                                        */
 /* ------------------------------------------------------------------ */
-function Transactions({ transactions, categories, catById, accounts, accountById, onAdd, onEdit, onDelete }) {
+function Transactions({ transactions, categories, catById, accounts, accountById, onAdd, onEdit, onDelete, onImport }) {
   const [filterType, setFilterType] = useState("todos");
   const [filterCat, setFilterCat] = useState("todas");
 
@@ -745,17 +841,33 @@ function Transactions({ transactions, categories, catById, accounts, accountById
         title="Lançamentos"
         subtitle="Receitas e despesas registradas"
         right={
-          <button
-            onClick={onAdd}
-            className="flex items-center gap-1.5 rounded-md"
-            style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 14, padding: "9px 14px", background: COLORS.ink, color: COLORS.white }}
-          >
-            <Plus size={15} /> Novo lançamento
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="no-print flex items-center gap-1.5 rounded-md"
+              style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "9px 12px", border: `1px solid ${COLORS.line}`, color: COLORS.ink, background: COLORS.white }}
+            >
+              <Printer size={14} /> Exportar PDF
+            </button>
+            <button
+              onClick={onImport}
+              className="no-print flex items-center gap-1.5 rounded-md"
+              style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "9px 12px", border: `1px solid ${COLORS.line}`, color: COLORS.ink, background: COLORS.white }}
+            >
+              <Upload size={14} /> Importar CSV
+            </button>
+            <button
+              onClick={onAdd}
+              className="flex items-center gap-1.5 rounded-md"
+              style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 14, padding: "9px 14px", background: COLORS.ink, color: COLORS.white }}
+            >
+              <Plus size={15} /> Novo lançamento
+            </button>
+          </div>
         }
       />
 
-      <div className="flex flex-wrap gap-2 mt-5">
+      <div className="flex flex-wrap gap-2 mt-5 no-print">
         <Select value={filterType} onChange={setFilterType} options={[
           { value: "todos", label: "Todos os tipos" },
           { value: "receita", label: "Receitas" },
@@ -805,8 +917,10 @@ function Transactions({ transactions, categories, catById, accounts, accountById
                   >
                     {isTransfer ? "⇄" : t.type === "receita" ? "+" : "−"} {brl(t.amount)}
                   </span>
-                  <IconBtn onClick={() => onEdit(t)} title="Editar"><Pencil size={14} /></IconBtn>
-                  <IconBtn onClick={() => onDelete(t)} title="Excluir" color={COLORS.rust}><Trash2 size={14} /></IconBtn>
+                  <span className="no-print flex items-center gap-2">
+                    <IconBtn onClick={() => onEdit(t)} title="Editar"><Pencil size={14} /></IconBtn>
+                    <IconBtn onClick={() => onDelete(t)} title="Excluir" color={COLORS.rust}><Trash2 size={14} /></IconBtn>
+                  </span>
                 </div>
               </div>
             );
@@ -1387,6 +1501,121 @@ function AccountModal({ initial, onClose, onSave }) {
           Salvar
         </PrimaryBtn>
       </div>
+    </Modal>
+  );
+}
+
+function ImportTransactionsModal({ accounts, onClose, onImport }) {
+  const [rows, setRows] = useState([]);
+  const [hasHeader, setHasHeader] = useState(true);
+  const [dateCol, setDateCol] = useState(0);
+  const [descCol, setDescCol] = useState(1);
+  const [amountCol, setAmountCol] = useState(2);
+  const [accountId, setAccountId] = useState(accounts?.[0]?.id || "");
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const { rows: parsed } = parseCSV(ev.target.result);
+      setRows(parsed);
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  const headerRow = rows[0] || [];
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const colCount = headerRow.length;
+  const colOptions = Array.from({ length: colCount }, (_, i) => ({
+    value: i.toString(),
+    label: hasHeader && headerRow[i] ? headerRow[i] : `Coluna ${i + 1}`,
+  }));
+
+  const parsedTransactions = useMemo(() => {
+    return dataRows
+      .map((r) => ({
+        date: parseDateFlexible(r[dateCol] || ""),
+        description: (r[descCol] || "").trim(),
+        amount: parseAmountFlexible(r[amountCol] || ""),
+      }))
+      .filter((t) => t.date && t.amount !== null);
+  }, [dataRows, dateCol, descCol, amountCol]);
+
+  return (
+    <Modal title="Importar extrato (CSV)" onClose={onClose} width={620}>
+      {rows.length === 0 ? (
+        <Field label="Arquivo CSV do banco" hint="Exporte o extrato do seu banco em CSV e selecione o arquivo aqui.">
+          <input type="file" accept=".csv,text/csv" onChange={handleFile} style={inputStyle} />
+        </Field>
+      ) : (
+        <>
+          <label className="flex items-center gap-2 mb-3 cursor-pointer">
+            <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
+            <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>A primeira linha é cabeçalho</span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Coluna da data">
+              <select style={inputStyle} value={dateCol} onChange={(e) => setDateCol(Number(e.target.value))}>
+                {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Coluna da descrição">
+              <select style={inputStyle} value={descCol} onChange={(e) => setDescCol(Number(e.target.value))}>
+                {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Coluna do valor">
+              <select style={inputStyle} value={amountCol} onChange={(e) => setAmountCol(Number(e.target.value))}>
+                {colOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Conta de destino">
+            <select style={inputStyle} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+
+          <div className="rounded-md overflow-hidden mb-3" style={{ border: `1px solid ${COLORS.line}` }}>
+            <div className="px-3 py-2" style={{ background: COLORS.paperDim, fontFamily: fontBody, fontSize: 12, fontWeight: 600, color: COLORS.slate }}>
+              Prévia — {parsedTransactions.length} de {dataRows.length} linhas reconhecidas
+            </div>
+            {dataRows.slice(0, 5).map((r, i) => {
+              const date = parseDateFlexible(r[dateCol] || "");
+              const amount = parseAmountFlexible(r[amountCol] || "");
+              return (
+                <div key={i} className="flex items-center justify-between px-3 py-2 gap-2" style={{ borderTop: `1px dashed ${COLORS.line}` }}>
+                  <span style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.ink }} className="truncate">
+                    {date || "data?"} · {(r[descCol] || "").slice(0, 34) || "sem descrição"}
+                  </span>
+                  <span style={{ fontFamily: fontMono, fontSize: 12, color: amount === null ? COLORS.slate : amount >= 0 ? COLORS.green : COLORS.rust, flexShrink: 0 }}>
+                    {amount !== null ? brl(amount) : "valor?"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <p style={{ fontFamily: fontBody, fontSize: 11.5, color: COLORS.slate, marginBottom: 4 }}>
+            Valores negativos viram despesa, positivos viram receita. Você pode ajustar a categoria de cada lançamento depois.
+          </p>
+
+          <div className="flex gap-2 justify-end mt-5">
+            <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
+            <PrimaryBtn
+              onClick={() => {
+                if (!accountId || parsedTransactions.length === 0) return;
+                onImport(parsedTransactions, accountId);
+              }}
+            >
+              Importar {parsedTransactions.length} lançamentos
+            </PrimaryBtn>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }
