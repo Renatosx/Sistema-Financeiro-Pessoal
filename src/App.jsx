@@ -1100,9 +1100,11 @@ function CategoryGroup({ title, items, onEdit, onDelete, onAddSub, onDeleteSub, 
 /*  Accounts (Bancos)                                                   */
 /* ------------------------------------------------------------------ */
 function Accounts({ accountBalances, pockets, persistPockets, onAdd, onEdit, onDelete, onDeletePocket }) {
+  const [accTab, setAccTab] = useState("contas");
   const [pocketModal, setPocketModal] = useState(null); // {accountId, editing?}
   const [contribPocket, setContribPocket] = useState(null);
   const total = accountBalances.reduce((a, b) => a + b.balance, 0);
+  const totalCaixinhas = pockets.reduce((a, p) => a + p.currentAmount, 0);
   const pocketsByAccount = useMemo(() => {
     const map = {};
     pockets.forEach((p) => { (map[p.accountId] ||= []).push(p); });
@@ -1125,100 +1127,160 @@ function Accounts({ accountBalances, pockets, persistPockets, onAdd, onEdit, onD
         }
       />
 
-      <div
-        className="mt-5 rounded-md px-5 py-3 flex items-center justify-between"
-        style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}
-      >
-        <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.slate }}>Total em todas as contas</span>
-        <span style={{ fontFamily: fontMono, fontSize: 16, fontWeight: 600, color: total >= 0 ? COLORS.green : COLORS.rust }}>
-          {brl(total)}
-        </span>
+      <div className="flex gap-2 mt-5 mb-2">
+        <button
+          onClick={() => setAccTab("contas")}
+          className="rounded-md py-2 px-4"
+          style={{
+            fontFamily: fontBody, fontWeight: 600, fontSize: 13.5,
+            background: accTab === "contas" ? COLORS.ink : COLORS.paperDim,
+            color: accTab === "contas" ? COLORS.white : COLORS.slate,
+          }}
+        >
+          Contas ({accountBalances.length})
+        </button>
+        <button
+          onClick={() => setAccTab("caixinhas")}
+          className="rounded-md py-2 px-4"
+          style={{
+            fontFamily: fontBody, fontWeight: 600, fontSize: 13.5,
+            background: accTab === "caixinhas" ? COLORS.gold : COLORS.paperDim,
+            color: accTab === "caixinhas" ? COLORS.white : COLORS.slate,
+          }}
+        >
+          Caixinhas ({pockets.length})
+        </button>
       </div>
 
-      {accountBalances.length === 0 ? (
-        <div className="mt-8"><EmptyHint text="Nenhum banco cadastrado ainda." /></div>
+      {accTab === "contas" ? (
+        <>
+          <div
+            className="mt-3 rounded-md px-5 py-3 flex items-center justify-between"
+            style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}
+          >
+            <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.slate }}>Total em todas as contas</span>
+            <span style={{ fontFamily: fontMono, fontSize: 16, fontWeight: 600, color: total >= 0 ? COLORS.green : COLORS.rust }}>
+              {brl(total)}
+            </span>
+          </div>
+
+          {accountBalances.length === 0 ? (
+            <div className="mt-8"><EmptyHint text="Nenhum banco cadastrado ainda." /></div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+              {accountBalances.map((a) => (
+                <div key={a.id} className="rounded-md p-4" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="flex items-center justify-center rounded-md"
+                        style={{ width: 30, height: 30, background: `${a.color}1A`, color: a.color, flexShrink: 0 }}
+                      >
+                        <Landmark size={15} />
+                      </span>
+                      <span style={{ fontFamily: fontBody, fontSize: 14.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{a.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <IconBtn onClick={() => onEdit(a)} title="Editar"><Pencil size={13} /></IconBtn>
+                      <IconBtn onClick={() => onDelete(a)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
+                    </div>
+                  </div>
+                  <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: a.balance >= 0 ? COLORS.green : COLORS.rust, marginTop: 12 }}>
+                    {brl(a.balance)}
+                  </div>
+                  <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
+                    Saldo inicial: {brl(a.initialBalance || 0)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
-          {accountBalances.map((a) => {
-            const accPockets = pocketsByAccount[a.id] || [];
-            const emCaixinhas = accPockets.reduce((sum, p) => sum + p.currentAmount, 0);
-            const livre = a.balance - emCaixinhas;
-            return (
-              <div key={a.id} className="rounded-md p-4" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="flex items-center justify-center rounded-md"
-                      style={{ width: 30, height: 30, background: `${a.color}1A`, color: a.color, flexShrink: 0 }}
-                    >
-                      <Landmark size={15} />
-                    </span>
-                    <span style={{ fontFamily: fontBody, fontSize: 14.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{a.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <IconBtn onClick={() => onEdit(a)} title="Editar"><Pencil size={13} /></IconBtn>
-                    <IconBtn onClick={() => onDelete(a)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
-                  </div>
-                </div>
-                <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: a.balance >= 0 ? COLORS.green : COLORS.rust, marginTop: 12 }}>
-                  {brl(a.balance)}
-                </div>
-                <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate, marginTop: 2 }}>
-                  Saldo inicial: {brl(a.initialBalance || 0)}
-                </div>
+        <>
+          <div
+            className="mt-3 rounded-md px-5 py-3 flex items-center justify-between"
+            style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}
+          >
+            <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.slate }}>Total guardado em caixinhas</span>
+            <span style={{ fontFamily: fontMono, fontSize: 16, fontWeight: 600, color: COLORS.gold }}>
+              {brl(totalCaixinhas)}
+            </span>
+          </div>
 
-                {accPockets.length > 0 && (
-                  <div className="mt-3 rounded-md p-2.5" style={{ background: COLORS.paperDim }}>
-                    <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>Livre (fora das caixinhas)</div>
-                    <div style={{ fontFamily: fontMono, fontSize: 14, fontWeight: 600, color: livre >= 0 ? COLORS.ink : COLORS.rust }}>{brl(livre)}</div>
-                  </div>
-                )}
+          {accountBalances.length === 0 ? (
+            <div className="mt-8"><EmptyHint text="Cadastre um banco primeiro pra poder criar caixinhas." /></div>
+          ) : (
+            <div className="space-y-4 mt-5">
+              {accountBalances.map((a) => {
+                const accPockets = pocketsByAccount[a.id] || [];
+                const emCaixinhas = accPockets.reduce((sum, p) => sum + p.currentAmount, 0);
+                const livre = a.balance - emCaixinhas;
+                return (
+                  <div key={a.id} className="rounded-md overflow-hidden" style={{ border: `1px solid ${COLORS.line}`, background: COLORS.white }}>
+                    <div className="flex items-center justify-between px-4 py-3" style={{ background: COLORS.paperDim }}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="flex items-center justify-center rounded-md"
+                          style={{ width: 26, height: 26, background: `${a.color}1A`, color: a.color, flexShrink: 0 }}
+                        >
+                          <Landmark size={13} />
+                        </span>
+                        <span style={{ fontFamily: fontDisplay, fontSize: 15, fontWeight: 600, color: COLORS.ink }} className="truncate">{a.name}</span>
+                        <span style={{ fontFamily: fontBody, fontSize: 11.5, color: COLORS.slate }}>· livre {brl(livre)}</span>
+                      </div>
+                      <button
+                        onClick={() => setPocketModal({ accountId: a.id })}
+                        className="flex items-center gap-1 rounded-md px-2.5 py-1.5 shrink-0"
+                        style={{ fontFamily: fontBody, fontSize: 12, fontWeight: 600, border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+                      >
+                        <Plus size={12} /> Caixinha
+                      </button>
+                    </div>
 
-                {accPockets.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {accPockets.map((p) => {
-                      const pct = p.targetAmount > 0 ? Math.min(100, (p.currentAmount / p.targetAmount) * 100) : null;
-                      return (
-                        <div key={p.id} className="rounded-md p-2.5" style={{ border: `1px solid ${COLORS.line}` }}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <PiggyBank size={13} style={{ color: p.color, flexShrink: 0 }} />
-                              <span style={{ fontFamily: fontBody, fontSize: 12.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{p.name}</span>
+                    {accPockets.length === 0 ? (
+                      <div className="px-4 py-4" style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.slate }}>
+                        Nenhuma caixinha neste banco ainda.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
+                        {accPockets.map((p) => {
+                          const pct = p.targetAmount > 0 ? Math.min(100, (p.currentAmount / p.targetAmount) * 100) : null;
+                          return (
+                            <div key={p.id} className="rounded-md p-2.5" style={{ border: `1px solid ${COLORS.line}` }}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <PiggyBank size={13} style={{ color: p.color, flexShrink: 0 }} />
+                                  <span style={{ fontFamily: fontBody, fontSize: 12.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{p.name}</span>
+                                </div>
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <IconBtn onClick={() => setContribPocket(p)} title="Aportar / retirar"><Plus size={12} /></IconBtn>
+                                  <IconBtn onClick={() => setPocketModal({ accountId: a.id, editing: p })} title="Editar"><Pencil size={12} /></IconBtn>
+                                  <IconBtn onClick={() => onDeletePocket(p)} title="Excluir" color={COLORS.rust}><Trash2 size={12} /></IconBtn>
+                                </div>
+                              </div>
+                              <div className="flex items-baseline justify-between mt-1">
+                                <span style={{ fontFamily: fontMono, fontSize: 14, fontWeight: 600, color: COLORS.ink }}>{brl(p.currentAmount)}</span>
+                                {p.targetAmount > 0 && (
+                                  <span style={{ fontFamily: fontMono, fontSize: 11, color: COLORS.slate }}>meta: {brl(p.targetAmount)}</span>
+                                )}
+                              </div>
+                              {pct !== null && (
+                                <div className="mt-1.5" style={{ height: 5, borderRadius: 4, background: COLORS.paperDim, overflow: "hidden" }}>
+                                  <div style={{ width: `${pct}%`, height: "100%", background: p.color }} />
+                                </div>
+                              )}
                             </div>
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <IconBtn onClick={() => setContribPocket(p)} title="Aportar / retirar"><Plus size={12} /></IconBtn>
-                              <IconBtn onClick={() => setPocketModal({ accountId: a.id, editing: p })} title="Editar"><Pencil size={12} /></IconBtn>
-                              <IconBtn onClick={() => onDeletePocket(p)} title="Excluir" color={COLORS.rust}><Trash2 size={12} /></IconBtn>
-                            </div>
-                          </div>
-                          <div className="flex items-baseline justify-between mt-1">
-                            <span style={{ fontFamily: fontMono, fontSize: 14, fontWeight: 600, color: COLORS.ink }}>{brl(p.currentAmount)}</span>
-                            {p.targetAmount > 0 && (
-                              <span style={{ fontFamily: fontMono, fontSize: 11, color: COLORS.slate }}>meta: {brl(p.targetAmount)}</span>
-                            )}
-                          </div>
-                          {pct !== null && (
-                            <div className="mt-1.5" style={{ height: 5, borderRadius: 4, background: COLORS.paperDim, overflow: "hidden" }}>
-                              <div style={{ width: `${pct}%`, height: "100%", background: p.color }} />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-
-                <button
-                  onClick={() => setPocketModal({ accountId: a.id })}
-                  className="mt-3 w-full rounded-md flex items-center justify-center gap-1.5"
-                  style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 12.5, padding: "7px", border: `1px dashed ${COLORS.line}`, color: COLORS.slate }}
-                >
-                  <Plus size={13} /> Nova caixinha
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {pocketModal && (
