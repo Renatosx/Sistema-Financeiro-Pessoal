@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Printer } from "lucide-react";
 import {
   COLORS, fontDisplay, fontBody, fontMono,
   brl, todayISO, periodRange, shiftPeriod,
@@ -61,13 +62,22 @@ export default function DRE({ transactions, categories }) {
         title="DRE"
         subtitle="Demonstrativo de Resultado — receitas, despesas e resultado do período"
         right={
-          <PeriodSwitcher
-            periodType={periodType} setPeriodType={setPeriodType}
-            periodAnchor={periodAnchor} setPeriodAnchor={setPeriodAnchor}
-            customStart={customStart} setCustomStart={setCustomStart}
-            customEnd={customEnd} setCustomEnd={setCustomEnd}
-            label={period.label}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="no-print flex items-center gap-1.5 rounded-md"
+              style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "9px 12px", border: `1px solid ${COLORS.line}`, color: COLORS.ink, background: COLORS.white }}
+            >
+              <Printer size={14} /> Exportar PDF
+            </button>
+            <PeriodSwitcher
+              periodType={periodType} setPeriodType={setPeriodType}
+              periodAnchor={periodAnchor} setPeriodAnchor={setPeriodAnchor}
+              customStart={customStart} setCustomStart={setCustomStart}
+              customEnd={customEnd} setCustomEnd={setCustomEnd}
+              label={period.label}
+            />
+          </div>
         }
       />
 
