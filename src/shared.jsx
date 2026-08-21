@@ -1,5 +1,5 @@
 import React from "react";
-import { X } from "lucide-react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Tokens                                                             */
@@ -52,6 +52,39 @@ export const addMonthToDate = (dateStr) => {
   d.setMonth(d.getMonth() + 1);
   return d.toISOString().slice(0, 10);
 };
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const isoDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+export const brDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
+
+export function periodRange(type, anchor, customStart, customEnd) {
+  if (type === "personalizado") {
+    return { start: customStart, end: customEnd, label: `${brDate(customStart)} – ${brDate(customEnd)}` };
+  }
+  const d = new Date(anchor + "T00:00:00");
+  if (type === "trimestre") {
+    const q = Math.floor(d.getMonth() / 3);
+    const start = new Date(d.getFullYear(), q * 3, 1);
+    const end = new Date(d.getFullYear(), q * 3 + 3, 0);
+    return { start: isoDate(start), end: isoDate(end), label: `${q + 1}º Trimestre de ${d.getFullYear()}` };
+  }
+  if (type === "semestre") {
+    const s = d.getMonth() < 6 ? 0 : 1;
+    const start = new Date(d.getFullYear(), s * 6, 1);
+    const end = new Date(d.getFullYear(), s * 6 + 6, 0);
+    return { start: isoDate(start), end: isoDate(end), label: `${s + 1}º Semestre de ${d.getFullYear()}` };
+  }
+  const start = new Date(d.getFullYear(), d.getMonth(), 1);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { start: isoDate(start), end: isoDate(end), label: monthLabel(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`) };
+}
+
+export function shiftPeriod(type, anchor, delta) {
+  const d = new Date(anchor + "T00:00:00");
+  const months = type === "trimestre" ? 3 : type === "semestre" ? 6 : 1;
+  const nd = new Date(d.getFullYear(), d.getMonth() + delta * months, 1);
+  return isoDate(nd);
+}
 
 /* ------------------------------------------------------------------ */
 /*  Shared styles                                                       */
@@ -236,5 +269,35 @@ export function Select({ value, onChange, options }) {
         <option key={o.value} value={o.value}>{o.label}</option>
       ))}
     </select>
+  );
+}
+
+export function PeriodSwitcher({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, customStart, setCustomStart, customEnd, setCustomEnd, label }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select
+        value={periodType}
+        onChange={setPeriodType}
+        options={[
+          { value: "mes", label: "Mensal" },
+          { value: "trimestre", label: "Trimestral" },
+          { value: "semestre", label: "Semestral" },
+          { value: "personalizado", label: "Personalizado" },
+        ]}
+      />
+      {periodType === "personalizado" ? (
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} style={{ ...inputStyle, width: 145 }} />
+          <span style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.slate }}>até</span>
+          <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} style={{ ...inputStyle, width: 145 }} />
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 rounded-md" style={{ border: `1px solid ${COLORS.line}`, background: COLORS.white }}>
+          <IconBtn onClick={() => setPeriodAnchor(shiftPeriod(periodType, periodAnchor, -1))} title="Período anterior"><ChevronLeft size={16} /></IconBtn>
+          <span style={{ fontFamily: fontMono, fontSize: 13, minWidth: 160, textAlign: "center", textTransform: "capitalize" }}>{label}</span>
+          <IconBtn onClick={() => setPeriodAnchor(shiftPeriod(periodType, periodAnchor, 1))} title="Próximo período"><ChevronRight size={16} /></IconBtn>
+        </div>
+      )}
+    </div>
   );
 }
