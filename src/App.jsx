@@ -15,7 +15,7 @@ import {
   uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate,
   inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn,
   Panel, EmptyHint, Header, Select, periodRange, shiftPeriod, PeriodSwitcher,
-  parseCSV, parseDateFlexible, parseAmountFlexible, parseOFX,
+  parseCSV, parseDateFlexible, parseAmountFlexible, parseOFX, matchCategoryRule,
 } from "./shared.jsx";
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
@@ -67,6 +67,7 @@ const K_PROV = "pf-provisions";
 const K_CARDS = "pf-creditcards";
 const K_INVOICES = "pf-invoices";
 const K_POCKETS = "pf-pockets";
+const K_RULES = "pf-category-rules";
 const K_SETTINGS = "pf-settings";
 
 import { loadKey, saveKey } from "./storage.js";
@@ -88,6 +89,7 @@ export default function App({ userEmail, onSignOut }) {
   const [creditCards, setCreditCards] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [pockets, setPockets] = useState([]);
+  const [categoryRules, setCategoryRules] = useState([]);
   const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" });
   const [periodType, setPeriodType] = useState("mes");
   const [periodAnchor, setPeriodAnchor] = useState(`${todayISO().slice(0, 7)}-01`);
@@ -106,7 +108,7 @@ export default function App({ userEmail, onSignOut }) {
 
   useEffect(() => {
     (async () => {
-      const [tx, cat, gl, acc, inv, pur, inst, prov, cards, invs, pockets_, sett] = await Promise.all([
+      const [tx, cat, gl, acc, inv, pur, inst, prov, cards, invs, pockets_, rules, sett] = await Promise.all([
         loadKey(K_TX, []),
         loadKey(K_CAT, null),
         loadKey(K_GOALS, []),
@@ -118,6 +120,7 @@ export default function App({ userEmail, onSignOut }) {
         loadKey(K_CARDS, []),
         loadKey(K_INVOICES, []),
         loadKey(K_POCKETS, []),
+        loadKey(K_RULES, []),
         loadKey(K_SETTINGS, { monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" }),
       ]);
       let finalCat = cat;
@@ -141,6 +144,7 @@ export default function App({ userEmail, onSignOut }) {
       setCreditCards(cards);
       setInvoices(invs);
       setPockets(pockets_);
+      setCategoryRules(rules);
       setSettings({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light", ...(sett || {}) });
       setReady(true);
     })();
@@ -157,6 +161,7 @@ export default function App({ userEmail, onSignOut }) {
   const persistCreditCards = useCallback((next) => { setCreditCards(next); saveKey(K_CARDS, next); }, []);
   const persistInvoices = useCallback((next) => { setInvoices(next); saveKey(K_INVOICES, next); }, []);
   const persistPockets = useCallback((next) => { setPockets(next); saveKey(K_POCKETS, next); }, []);
+  const persistCategoryRules = useCallback((next) => { setCategoryRules(next); saveKey(K_RULES, next); }, []);
   const persistSettings = useCallback((next) => { setSettings(next); saveKey(K_SETTINGS, next); }, []);
 
   useEffect(() => {
@@ -186,21 +191,24 @@ export default function App({ userEmail, onSignOut }) {
   }, [transactions, categories, goals, accounts, investments, purchases, installments, provisions, settings]);
 
   const handleImportTransactions = useCallback((parsed, targetAccountId) => {
-    const fallbackDespesa = categories.find((c) => c.type === "despesa" && c.name === "Outros") || categories.find((c) => c.type === "despesa");
-    const fallbackReceita = categories.find((c) => c.type === "receita");
-    const newTx = parsed.map((p) => ({
-      id: uid(),
-      type: p.amount < 0 ? "despesa" : "receita",
-      categoryId: (p.amount < 0 ? fallbackDespesa?.id : fallbackReceita?.id) || null,
-      subcategoryId: null,
-      accountId: targetAccountId,
-      amount: Math.abs(p.amount),
-      date: p.date,
-      description: p.description,
-    }));
+    const newTx = parsed.map((p) => {
+      const type = p.amount < 0 ? "despesa" : "receita";
+      const match = matchCategoryRule(p.description, categoryRules);
+      let categoryId = match?.categoryId || null;
+      const matchedCat = categoryId ? categories.find((c) => c.id === categoryId) : null;
+      if (matchedCat && matchedCat.type !== type) categoryId = null;
+      return {
+        id: uid(), type,
+        categoryId, subcategoryId: matchedCat ? match?.subcategoryId || null : null,
+        accountId: targetAccountId,
+        amount: Math.abs(p.amount),
+        date: p.date,
+        description: p.description,
+      };
+    });
     persistTx([...newTx, ...transactions]);
     setImportModal(false);
-  }, [categories, transactions, persistTx]);
+  }, [categories, categoryRules, transactions, persistTx]);
 
   const monthNamesShort = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const annualData = useMemo(() => {
@@ -504,6 +512,7 @@ export default function App({ userEmail, onSignOut }) {
           {tab === "categories" && (
             <Categories
               categories={categories}
+              categoryRules={categoryRules} persistCategoryRules={persistCategoryRules}
               onAdd={() => setCatModal({})}
               onEdit={(c) => setCatModal({ editing: c })}
               onDelete={(c) => setConfirmDelete({ type: "cat", id: c.id, label: c.name })}
@@ -577,6 +586,13 @@ export default function App({ userEmail, onSignOut }) {
               persistTx([{ ...tx, id: uid() }, ...transactions]);
             }
             setTxModal(null);
+          }}
+          onSaveRule={(rule) => {
+            const existingIdx = categoryRules.findIndex((r) => r.keyword.toLowerCase() === rule.keyword.toLowerCase());
+            const next = existingIdx >= 0
+              ? categoryRules.map((r, i) => (i === existingIdx ? { ...r, ...rule } : r))
+              : [...categoryRules, { ...rule, id: uid() }];
+            persistCategoryRules(next);
           }}
         />
       )}
@@ -881,7 +897,7 @@ function Transactions({ transactions, categories, catById, accounts, accountById
   const list = useMemo(() => {
     return transactions
       .filter((t) => (filterType === "todos" ? true : t.type === filterType))
-      .filter((t) => (filterCat === "todas" ? true : t.categoryId === filterCat))
+      .filter((t) => (filterCat === "todas" ? true : filterCat === "sem_categoria" ? !t.categoryId && t.type !== "transferencia" : t.categoryId === filterCat))
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [transactions, filterType, filterCat]);
 
@@ -926,6 +942,7 @@ function Transactions({ transactions, categories, catById, accounts, accountById
         ]} />
         <Select value={filterCat} onChange={setFilterCat} options={[
           { value: "todas", label: "Todas as categorias" },
+          { value: "sem_categoria", label: "⚠ Não categorizado" },
           ...categories.map((c) => ({ value: c.id, label: c.name })),
         ]} />
       </div>
@@ -945,15 +962,15 @@ function Transactions({ transactions, categories, catById, accounts, accountById
                 style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span style={{ width: 9, height: 9, borderRadius: 9, background: isTransfer ? COLORS.slate : (cat?.color || COLORS.slate), flexShrink: 0 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: 9, background: isTransfer ? COLORS.slate : (cat?.color || COLORS.rust), flexShrink: 0 }} />
                   <div className="min-w-0">
                     <div style={{ fontFamily: fontBody, fontSize: 14, fontWeight: 600, color: COLORS.ink }} className="truncate">
                       {isTransfer ? (t.description || "Transferência") : (t.description || cat?.name || "Sem descrição")}
                     </div>
-                    <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>
+                    <div style={{ fontFamily: fontBody, fontSize: 12, color: !isTransfer && !cat ? COLORS.rust : COLORS.slate, fontWeight: !isTransfer && !cat ? 600 : 400 }}>
                       {isTransfer
                         ? `${accountById[t.fromAccountId]?.name || "?"} → ${accountById[t.toAccountId]?.name || "?"}`
-                        : `${cat?.name || ""}${sub ? ` › ${sub.name}` : ""} · ${accountById[t.accountId]?.name || "sem conta"}`
+                        : `${cat ? cat.name + (sub ? ` › ${sub.name}` : "") : "⚠ Não categorizado"} · ${accountById[t.accountId]?.name || "sem conta"}`
                       } · {new Date(t.date + "T00:00:00").toLocaleDateString("pt-BR")}
                     </div>
                   </div>
@@ -984,7 +1001,7 @@ function Transactions({ transactions, categories, catById, accounts, accountById
 /* ------------------------------------------------------------------ */
 /*  Categories                                                          */
 /* ------------------------------------------------------------------ */
-function Categories({ categories, onAdd, onEdit, onDelete, onAddSub, onDeleteSub }) {
+function Categories({ categories, categoryRules, persistCategoryRules, onAdd, onEdit, onDelete, onAddSub, onDeleteSub }) {
   const [catTab, setCatTab] = useState("despesa");
   const receitas = categories.filter((c) => c.type === "receita");
   const despesas = categories.filter((c) => c.type === "despesa");
@@ -1036,7 +1053,99 @@ function Categories({ categories, onAdd, onEdit, onDelete, onAddSub, onDeleteSub
         items={items} onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} onDeleteSub={onDeleteSub}
         showBudget={catTab === "despesa"}
       />
+
+      <RulesPanel categories={categories} categoryRules={categoryRules} persistCategoryRules={persistCategoryRules} />
     </div>
+  );
+}
+
+function RulesPanel({ categories, categoryRules, persistCategoryRules }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 style={{ fontFamily: fontDisplay, fontSize: 17, fontWeight: 600, color: COLORS.ink }}>Regras de categorização</h3>
+          <p style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.slate, marginTop: 2 }}>
+            Usadas automaticamente ao importar extratos (CSV/OFX) pra sugerir a categoria certa.
+          </p>
+        </div>
+        <button
+          onClick={() => setModalOpen(true)}
+          className="flex items-center gap-1.5 rounded-md shrink-0"
+          style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 12.5, padding: "7px 12px", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+        >
+          <Plus size={13} /> Nova regra
+        </button>
+      </div>
+
+      {categoryRules.length === 0 ? (
+        <EmptyHint text="Nenhuma regra ainda. Ao editar um lançamento, marque 'lembrar categoria' — ou crie uma regra direto aqui." />
+      ) : (
+        <div className="rounded-md overflow-hidden" style={{ border: `1px solid ${COLORS.line}`, background: COLORS.white }}>
+          {categoryRules.map((r, i) => (
+            <div key={r.id} className="flex items-center justify-between px-4 py-2.5" style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}>
+              <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>
+                "<strong>{r.keyword}</strong>" → {catById[r.categoryId]?.name || "categoria removida"}
+              </span>
+              <IconBtn onClick={() => persistCategoryRules(categoryRules.filter((x) => x.id !== r.id))} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modalOpen && (
+        <RuleModal
+          categories={categories}
+          onClose={() => setModalOpen(false)}
+          onSave={(rule) => {
+            persistCategoryRules([...categoryRules, { ...rule, id: uid() }]);
+            setModalOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RuleModal({ categories, onClose, onSave }) {
+  const [keyword, setKeyword] = useState("");
+  const [categoryId, setCategoryId] = useState(categories[0]?.id || "");
+  const [subcategoryId, setSubcategoryId] = useState("");
+  const currentCat = categories.find((c) => c.id === categoryId);
+
+  return (
+    <Modal title="Nova regra de categorização" onClose={onClose} width={420}>
+      <Field label="Palavra-chave" hint="Se a descrição do lançamento contiver esse texto, a categoria será sugerida automaticamente na importação.">
+        <input style={inputStyle} value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Ex.: UBER, IFOOD, NETFLIX" autoFocus />
+      </Field>
+      <Field label="Categoria">
+        <select style={inputStyle} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId(""); }}>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.type === "receita" ? "receita" : "despesa"})</option>)}
+        </select>
+      </Field>
+      {currentCat?.subcategories?.length > 0 && (
+        <Field label="Subcategoria (opcional)">
+          <select style={inputStyle} value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)}>
+            <option value="">Nenhuma</option>
+            {currentCat.subcategories.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
+      )}
+      <div className="flex gap-2 justify-end mt-5">
+        <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
+        <PrimaryBtn
+          onClick={() => {
+            if (!keyword.trim() || !categoryId) return;
+            onSave({ keyword: keyword.trim(), categoryId, subcategoryId: subcategoryId || null });
+          }}
+        >
+          Salvar
+        </PrimaryBtn>
+      </div>
+    </Modal>
   );
 }
 
@@ -1469,7 +1578,7 @@ function Goals({ goals, onAdd, onEdit, onDelete, onContribute }) {
 /* ------------------------------------------------------------------ */
 /*  Modals: Transaction / Category / Subcategory / Goal / Contribute    */
 /* ------------------------------------------------------------------ */
-function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
+function TransactionModal({ initial, categories, accounts, onClose, onSave, onSaveRule }) {
   const [type, setType] = useState(initial?.type || "despesa");
   const [categoryId, setCategoryId] = useState(initial?.categoryId || "");
   const [subcategoryId, setSubcategoryId] = useState(initial?.subcategoryId || "");
@@ -1479,6 +1588,8 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
   const [amount, setAmount] = useState(initial?.amount?.toString() || "");
   const [date, setDate] = useState(initial?.date || todayISO());
   const [description, setDescription] = useState(initial?.description || "");
+  const [saveRule, setSaveRule] = useState(false);
+  const [ruleKeyword, setRuleKeyword] = useState("");
 
   const isTransfer = type === "transferencia";
   const filteredCats = categories.filter((c) => c.type === type);
@@ -1574,6 +1685,22 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
         <input style={inputStyle} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={isTransfer ? "Ex.: Aporte mensal" : "Ex.: Mercado do mês"} />
       </Field>
 
+      {!isTransfer && description.trim() && onSaveRule && (
+        <>
+          <label className="flex items-center gap-2 mt-1 mb-2 cursor-pointer">
+            <input type="checkbox" checked={saveRule} onChange={(e) => { setSaveRule(e.target.checked); if (e.target.checked && !ruleKeyword) setRuleKeyword(description.trim()); }} />
+            <span style={{ fontFamily: fontBody, fontSize: 13, color: COLORS.ink }}>
+              Lembrar essa categoria pra lançamentos parecidos (útil pra importações futuras)
+            </span>
+          </label>
+          {saveRule && (
+            <Field label="Palavra-chave da regra" hint="Sempre que a descrição de um lançamento importado contiver esse texto, essa categoria será sugerida.">
+              <input style={inputStyle} value={ruleKeyword} onChange={(e) => setRuleKeyword(e.target.value)} placeholder="Ex.: UBER, IFOOD, NETFLIX" />
+            </Field>
+          )}
+        </>
+      )}
+
       <div className="flex gap-2 justify-end mt-5">
         <GhostBtn onClick={onClose}>Cancelar</GhostBtn>
         <PrimaryBtn
@@ -1590,6 +1717,9 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave }) {
                 id: initial?.id, type, categoryId, subcategoryId: subcategoryId || null,
                 accountId: accountId || null, amount: parseFloat(amount), date, description: description.trim(),
               });
+              if (saveRule && ruleKeyword.trim() && onSaveRule) {
+                onSaveRule({ keyword: ruleKeyword.trim(), categoryId, subcategoryId: subcategoryId || null });
+              }
             }
           }}
         >
