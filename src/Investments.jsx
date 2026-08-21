@@ -19,6 +19,7 @@ export default function Investments({ investments, accounts, transactions, purch
   const [expanded, setExpanded] = useState(null); // investment id showing purchase history
   const [editingTargets, setEditingTargets] = useState(false);
   const [targetDrafts, setTargetDrafts] = useState({});
+  const [collapsedClasses, setCollapsedClasses] = useState({});
 
   const accountById = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
 
@@ -65,6 +66,12 @@ export default function Investments({ investments, accounts, transactions, purch
   }, [investments, accountById, purchasedByAccount]);
 
   const ranking = useMemo(() => [...rows].filter((r) => r.totalInvested > 0).sort((a, b) => b.totalInvested - a.totalInvested), [rows]);
+
+  const grouped = useMemo(() => {
+    const map = {};
+    rows.forEach((r) => { (map[r.type] ||= []).push(r); });
+    return TYPES.map((t) => ({ type: t, items: (map[t] || []).sort((a, b) => b.totalInvested - a.totalInvested) })).filter((g) => g.items.length > 0);
+  }, [rows]);
 
   const allocationByClass = useMemo(() => {
     const map = {};
@@ -214,110 +221,119 @@ export default function Investments({ investments, accounts, transactions, purch
           <EmptyHint text='Nenhuma posição cadastrada ainda. Crie uma posição, vincule a um banco (aba Bancos) e registre as compras pra acompanhar cotas e preço médio.' />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-          {rows.map((inv) => {
-            const pctMeta = inv.targetAmount > 0 ? Math.min(100, (inv.totalInvested / inv.targetAmount) * 100) : null;
-            const acc = accountById[inv.accountId];
-            const isOpen = expanded === inv.id;
+        <div className="mt-6">
+          {grouped.map((g) => {
+            const classTotal = g.items.reduce((a, r) => a + r.totalInvested, 0);
+            const classPct = totalInvested > 0 ? (classTotal / totalInvested) * 100 : 0;
+            const isCollapsed = !!collapsedClasses[g.type];
             return (
-              <div key={inv.id} className="rounded-md p-5" style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span style={{ width: 11, height: 11, borderRadius: 11, background: inv.color, flexShrink: 0 }} />
-                    <div className="min-w-0">
-                      <div style={{ fontFamily: fontDisplay, fontSize: 17, fontWeight: 600, color: COLORS.ink }} className="truncate">{inv.name}</div>
-                      <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>{inv.type}{acc ? ` · ${acc.name}` : ""}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <IconBtn onClick={() => setModal({ editing: inv })} title="Editar"><Pencil size={13} /></IconBtn>
-                    <IconBtn onClick={() => onDeleteRequest(inv)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
-                  </div>
-                </div>
-
-                <div className="flex items-baseline justify-between mt-4">
-                  <span style={{ fontFamily: fontMono, fontSize: 21, fontWeight: 600, color: COLORS.ink }}>{brl(inv.totalInvested)}</span>
-                  {inv.targetAmount > 0 && (
-                    <span style={{ fontFamily: fontMono, fontSize: 12.5, color: COLORS.slate }}>meta: {brl(inv.targetAmount)}</span>
-                  )}
-                </div>
-                {pctMeta !== null && (
-                  <div className="mt-2" style={{ height: 7, borderRadius: 4, background: COLORS.paperDim, overflow: "hidden" }}>
-                    <div style={{ width: `${pctMeta}%`, height: "100%", background: COLORS.gold }} />
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-2 mt-4">
-                  <div className="rounded-md p-2.5" style={{ background: COLORS.paperDim }}>
-                    <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>Cotas</div>
-                    <div style={{ fontFamily: fontMono, fontSize: 15, fontWeight: 600, color: COLORS.ink }}>{inv.quotas || "—"}</div>
-                  </div>
-                  <div className="rounded-md p-2.5" style={{ background: COLORS.paperDim }}>
-                    <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>PM (preço médio)</div>
-                    <div style={{ fontFamily: fontMono, fontSize: 15, fontWeight: 600, color: COLORS.ink }}>{inv.pm > 0 ? brl(inv.pm) : "—"}</div>
-                  </div>
-                </div>
-
-                <div className="mt-2 rounded-md p-2.5" style={{ background: COLORS.paperDim }}>
-                  <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>Disponível na conta pra aportar</div>
-                  <div style={{ fontFamily: fontMono, fontSize: 15, fontWeight: 600, color: inv.disponivel >= 0 ? COLORS.gold : COLORS.rust }}>{brl(inv.disponivel)}</div>
-                </div>
-
-                {inv.rendimentos > 0 && (
-                  <div className="flex items-center gap-1.5 mt-3" style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.green }}>
-                    <TrendingUp size={13} /> {brl(inv.rendimentos)} em rendimentos recebidos
-                  </div>
-                )}
-
-                {inv.nextStep && (
-                  <div className="flex items-start gap-1.5 mt-3 rounded-md p-2.5" style={{ background: COLORS.paperDim }}>
-                    <ArrowRight size={13} style={{ color: COLORS.slate, marginTop: 2, flexShrink: 0 }} />
-                    <span style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.ink }}>{inv.nextStep}</span>
-                  </div>
-                )}
-
+              <div key={g.type} className="rounded-md overflow-hidden mb-4" style={{ border: `1px solid ${COLORS.line}`, background: COLORS.white }}>
                 <button
-                  onClick={() => setPurchaseFor(inv)}
-                  className="mt-3 w-full rounded-md flex items-center justify-center gap-1.5"
-                  style={{ fontFamily: fontBody, fontWeight: 600, fontSize: 13, padding: "8px", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+                  onClick={() => setCollapsedClasses((prev) => ({ ...prev, [g.type]: !prev[g.type] }))}
+                  className="w-full flex items-center justify-between px-4 py-3.5"
+                  style={{ background: COLORS.paperDim }}
                 >
-                  <Plus size={14} /> Registrar compra
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span style={{ width: 10, height: 10, borderRadius: 10, background: TYPE_COLORS[g.type], flexShrink: 0 }} />
+                    <span style={{ fontFamily: fontDisplay, fontSize: 16, fontWeight: 600, color: COLORS.ink }}>{g.type}</span>
+                    <span style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>({g.items.length})</span>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span style={{ fontFamily: fontMono, fontSize: 13.5, fontWeight: 600, color: COLORS.ink }} className="hidden sm:inline">{brl(classTotal)}</span>
+                    <span style={{ fontFamily: fontMono, fontSize: 12, color: COLORS.slate }}>{classPct.toFixed(0)}%</span>
+                    {isCollapsed ? <ChevronDown size={16} style={{ color: COLORS.slate }} /> : <ChevronUp size={16} style={{ color: COLORS.slate }} />}
+                  </div>
                 </button>
 
-                {inv.purchases.length > 0 && (
-                  <button
-                    onClick={() => setExpanded(isOpen ? null : inv.id)}
-                    className="mt-2 w-full flex items-center justify-center gap-1"
-                    style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}
-                  >
-                    {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    {isOpen ? "Ocultar histórico" : `Ver histórico (${inv.purchases.length})`}
-                  </button>
-                )}
-
-                {isOpen && (
-                  <div className="mt-2 rounded-md overflow-hidden" style={{ border: `1px solid ${COLORS.line}` }}>
-                    {inv.purchases.map((p, i) => (
-                      <div key={p.id} className="flex items-center justify-between px-3 py-2" style={{ borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}>
-                        <div>
-                          <div style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.ink }}>
-                            {p.quantity} un × {brl(p.unitPrice)}
-                          </div>
-                          <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>
-                            {new Date(p.date + "T00:00:00").toLocaleDateString("pt-BR")}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span style={{ fontFamily: fontMono, fontSize: 12.5, color: COLORS.ink }}>{brl(p.amount)}</span>
-                          <IconBtn
-                            onClick={() => persistPurchases(purchases.filter((x) => x.id !== p.id))}
-                            title="Excluir compra" color={COLORS.rust}
-                          >
-                            <Trash2 size={12} />
-                          </IconBtn>
-                        </div>
-                      </div>
-                    ))}
+                {!isCollapsed && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full" style={{ borderCollapse: "collapse", minWidth: 640 }}>
+                      <thead>
+                        <tr>
+                          {["Ativo", "Cotas", "PM", "Saldo", "Proventos", "% Carteira", "Meta", ""].map((h) => (
+                            <th
+                              key={h}
+                              className="text-left px-3 py-2"
+                              style={{ fontFamily: fontBody, fontSize: 11, fontWeight: 600, color: COLORS.slate, textTransform: "uppercase", letterSpacing: "0.03em", borderBottom: `1px solid ${COLORS.line}` }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.items.map((inv) => {
+                          const isOpen = expanded === inv.id;
+                          const pctCarteira = totalInvested > 0 ? (inv.totalInvested / totalInvested) * 100 : 0;
+                          const pctMeta = inv.targetAmount > 0 ? Math.min(100, (inv.totalInvested / inv.targetAmount) * 100) : null;
+                          const acc = accountById[inv.accountId];
+                          return (
+                            <React.Fragment key={inv.id}>
+                              <tr
+                                onClick={() => setExpanded(isOpen ? null : inv.id)}
+                                className="cursor-pointer"
+                                style={{ borderBottom: `1px dashed ${COLORS.line}` }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = COLORS.paperDim)}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                              >
+                                <td className="px-3 py-2.5">
+                                  <div style={{ fontFamily: fontBody, fontSize: 13.5, fontWeight: 600, color: COLORS.ink }}>{inv.name}</div>
+                                  <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>{acc?.name || "sem conta"}</div>
+                                </td>
+                                <td className="px-3 py-2.5" style={{ fontFamily: fontMono, fontSize: 13, color: COLORS.ink }}>{inv.quotas || "—"}</td>
+                                <td className="px-3 py-2.5" style={{ fontFamily: fontMono, fontSize: 13, color: COLORS.ink }}>{inv.pm > 0 ? brl(inv.pm) : "—"}</td>
+                                <td className="px-3 py-2.5" style={{ fontFamily: fontMono, fontSize: 13, fontWeight: 600, color: COLORS.ink }}>{brl(inv.totalInvested)}</td>
+                                <td className="px-3 py-2.5" style={{ fontFamily: fontMono, fontSize: 13, color: inv.rendimentos > 0 ? COLORS.green : COLORS.slate }}>{brl(inv.rendimentos)}</td>
+                                <td className="px-3 py-2.5" style={{ fontFamily: fontMono, fontSize: 13, color: COLORS.slate }}>{pctCarteira.toFixed(1)}%</td>
+                                <td className="px-3 py-2.5" style={{ fontFamily: fontMono, fontSize: 13, color: COLORS.slate }}>{pctMeta !== null ? `${pctMeta.toFixed(0)}%` : "—"}</td>
+                                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-0.5 justify-end">
+                                    <IconBtn onClick={() => setPurchaseFor(inv)} title="Registrar compra"><Plus size={13} /></IconBtn>
+                                    <IconBtn onClick={() => setModal({ editing: inv })} title="Editar"><Pencil size={13} /></IconBtn>
+                                    <IconBtn onClick={() => onDeleteRequest(inv)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
+                                  </div>
+                                </td>
+                              </tr>
+                              {isOpen && (
+                                <tr style={{ background: COLORS.paperDim }}>
+                                  <td colSpan={8} className="px-3 py-3">
+                                    {inv.nextStep && (
+                                      <div className="flex items-start gap-1.5 mb-2">
+                                        <ArrowRight size={13} style={{ color: COLORS.slate, marginTop: 2, flexShrink: 0 }} />
+                                        <span style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.ink }}>{inv.nextStep}</span>
+                                      </div>
+                                    )}
+                                    <div style={{ fontFamily: fontBody, fontSize: 11.5, color: COLORS.slate, marginBottom: 6 }}>
+                                      Disponível na conta pra aportar: <strong style={{ color: inv.disponivel >= 0 ? COLORS.ink : COLORS.rust }}>{brl(inv.disponivel)}</strong>
+                                    </div>
+                                    {inv.purchases.length === 0 ? (
+                                      <div style={{ fontFamily: fontBody, fontSize: 12, color: COLORS.slate }}>Nenhuma compra registrada ainda.</div>
+                                    ) : (
+                                      <div className="rounded-md overflow-hidden" style={{ border: `1px solid ${COLORS.line}` }}>
+                                        {inv.purchases.map((p, i) => (
+                                          <div key={p.id} className="flex items-center justify-between px-3 py-2" style={{ background: COLORS.white, borderTop: i === 0 ? "none" : `1px dashed ${COLORS.line}` }}>
+                                            <div>
+                                              <div style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.ink }}>{p.quantity} un × {brl(p.unitPrice)}</div>
+                                              <div style={{ fontFamily: fontBody, fontSize: 11, color: COLORS.slate }}>{new Date(p.date + "T00:00:00").toLocaleDateString("pt-BR")}</div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <span style={{ fontFamily: fontMono, fontSize: 12.5, color: COLORS.ink }}>{brl(p.amount)}</span>
+                                              <IconBtn onClick={() => persistPurchases(purchases.filter((x) => x.id !== p.id))} title="Excluir compra" color={COLORS.rust}>
+                                                <Trash2 size={12} />
+                                              </IconBtn>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
