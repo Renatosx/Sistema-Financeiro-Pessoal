@@ -14,7 +14,7 @@ function suggestInvoiceDate(card) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function CreditCards({ cards, invoices, accounts, persistCards, persistInvoices, onPay, onDeleteRequest }) {
+export default function CreditCards({ cards, invoices, accounts, transactions, persistCards, persistInvoices, onPay, onDeleteRequest }) {
   const [cardModal, setCardModal] = useState(null);
   const [invoiceModal, setInvoiceModal] = useState(null); // card the invoice is being registered for
   const [importInvoiceCard, setImportInvoiceCard] = useState(null);
@@ -28,6 +28,16 @@ export default function CreditCards({ cards, invoices, accounts, persistCards, p
     invoices.forEach((inv) => { (map[inv.cardId] ||= []).push(inv); });
     return map;
   }, [invoices]);
+
+  const pendingPurchasesByCard = useMemo(() => {
+    const map = {};
+    (transactions || []).forEach((t) => {
+      if (t.type === "despesa" && t.cardId && t.paid === false) {
+        map[t.cardId] = (map[t.cardId] || 0) + t.amount;
+      }
+    });
+    return map;
+  }, [transactions]);
 
   const pendingInvoices = invoices.filter((inv) => inv.status !== "pago");
   const totalAberto = pendingInvoices.reduce((a, inv) => a + inv.amount, 0);
@@ -103,6 +113,13 @@ export default function CreditCards({ cards, invoices, accounts, persistCards, p
                     <IconBtn onClick={() => onDeleteRequest(card)} title="Excluir" color={COLORS.rust}><Trash2 size={13} /></IconBtn>
                   </div>
                 </div>
+
+                {pendingPurchasesByCard[card.id] > 0 && (
+                  <div className="mt-3 rounded-md px-3 py-2" style={{ background: COLORS.paperDim }}>
+                    <span style={{ fontFamily: fontBody, fontSize: 11.5, color: COLORS.slate }}>Lançamentos no cartão ainda não faturados: </span>
+                    <span style={{ fontFamily: fontMono, fontSize: 12.5, fontWeight: 600, color: COLORS.ink }}>{brl(pendingPurchasesByCard[card.id])}</span>
+                  </div>
+                )}
 
                 {openInvoice ? (
                   <>
