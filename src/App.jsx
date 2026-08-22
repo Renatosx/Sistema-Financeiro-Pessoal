@@ -214,7 +214,7 @@ export default function App({ userEmail, onSignOut }) {
   const annualData = useMemo(() => {
     return Array.from({ length: 12 }, (_, i) => {
       const mm = String(i + 1).padStart(2, "0");
-      const monthTxs = transactions.filter((t) => t.date.startsWith(`${annualYear}-${mm}`));
+      const monthTxs = transactions.filter((t) => t.date.startsWith(`${annualYear}-${mm}`) && t.paid !== false);
       const income = monthTxs.filter((t) => t.type === "receita").reduce((a, t) => a + t.amount, 0);
       const expense = monthTxs.filter((t) => t.type === "despesa").reduce((a, t) => a + t.amount, 0);
       return { name: monthNamesShort[i], Receitas: income, Despesas: expense, Saldo: income - expense };
@@ -268,14 +268,30 @@ export default function App({ userEmail, onSignOut }) {
       accountId: card?.accountId || accounts[0]?.id || null,
       amount: inv.amount, date: todayISO(),
       description: `Fatura ${card?.name || "cartão"} — venc. ${new Date(inv.dueDate + "T00:00:00").toLocaleDateString("pt-BR")}`,
+      paid: true, cardId: null,
     };
-    setTransactions((prev) => { const next = [tx, ...prev]; saveKey(K_TX, next); return next; });
+    setTransactions((prev) => {
+      const withPayment = [tx, ...prev];
+      const settled = withPayment.map((x) =>
+        x.cardId === inv.cardId && x.paid === false ? { ...x, paid: true } : x
+      );
+      saveKey(K_TX, settled);
+      return settled;
+    });
     setInvoices((prev) => {
       const next = prev.map((x) => (x.id === inv.id ? { ...x, status: "pago" } : x));
       saveKey(K_INVOICES, next);
       return next;
     });
   }, [creditCards, categories, accounts]);
+
+  const handleSettleTransaction = useCallback((tx) => {
+    setTransactions((prev) => {
+      const next = prev.map((x) => (x.id === tx.id ? { ...x, paid: true } : x));
+      saveKey(K_TX, next);
+      return next;
+    });
+  }, []);
 
   const accountBalances = useMemo(() => {
     return accounts.map((a) => {
@@ -285,6 +301,7 @@ export default function App({ userEmail, onSignOut }) {
           if (t.fromAccountId === a.id) return acc - t.amount;
           return acc;
         }
+        if (t.paid === false) return acc;
         if (t.accountId !== a.id) return acc;
         return acc + (t.type === "receita" ? t.amount : -t.amount);
       }, 0);
@@ -320,7 +337,7 @@ export default function App({ userEmail, onSignOut }) {
   }, [periodType, period]);
 
   const periodTx = useMemo(
-    () => transactions.filter((t) => t.date >= period.start && t.date <= period.end),
+    () => transactions.filter((t) => t.date >= period.start && t.date <= period.end && t.paid !== false),
     [transactions, period]
   );
   const totals = useMemo(() => {
@@ -334,6 +351,7 @@ export default function App({ userEmail, onSignOut }) {
   const totalBalanceAllTime = useMemo(
     () =>
       transactions.reduce((acc, t) => {
+        if (t.paid === false) return acc;
         if (t.type === "receita") return acc + t.amount;
         if (t.type === "despesa") return acc - t.amount;
         return acc;
@@ -492,11 +510,12 @@ export default function App({ userEmail, onSignOut }) {
           {tab === "transactions" && (
             <Transactions
               transactions={transactions} categories={categories} catById={catById}
-              accounts={accounts} accountById={accountById}
+              accounts={accounts} accountById={accountById} creditCards={creditCards}
               onAdd={() => setTxModal({})}
               onEdit={(t) => setTxModal({ editing: t })}
               onDelete={(t) => setConfirmDelete({ type: "tx", id: t.id, label: t.description || catById[t.categoryId]?.name })}
               onImport={() => setImportModal(true)}
+              onSettle={handleSettleTransaction}
             />
           )}
           {tab === "accounts" && (
@@ -552,7 +571,7 @@ export default function App({ userEmail, onSignOut }) {
           )}
           {tab === "creditcards" && (
             <CreditCards
-              cards={creditCards} invoices={invoices} accounts={accounts}
+              cards={creditCards} invoices={invoices} accounts={accounts} transactions={transactions}
               persistCards={persistCreditCards} persistInvoices={persistInvoices}
               onPay={handlePayInvoice}
               onDeleteRequest={(c) => setConfirmDelete({ type: "card", id: c.id, label: c.name })}
@@ -578,6 +597,7 @@ export default function App({ userEmail, onSignOut }) {
           initial={txModal.editing}
           categories={categories}
           accounts={accounts}
+          creditCards={creditCards}
           onClose={() => setTxModal(null)}
           onSave={(tx) => {
             if (txModal.editing) {
@@ -890,9 +910,10 @@ function SummaryCard({ label, value, icon: Icon, tone, stamp }) {
 /* ------------------------------------------------------------------ */
 /*  Transactions                                                        */
 /* ------------------------------------------------------------------ */
-function Transactions({ transactions, categories, catById, accounts, accountById, onAdd, onEdit, onDelete, onImport }) {
+function Transactions({ transactions, categories, catById, accounts, accountById, creditCards, onAdd, onEdit, onDelete, onImport, onSettle }) {
   const [filterType, setFilterType] = useState("todos");
   const [filterCat, setFilterCat] = useState("todas");
+  const cardById = useMemo(() => Object.fromEntries((creditCards || []).map((c) => [c.id, c])), [creditCards]);
 
   const list = useMemo(() => {
     return transactions
@@ -955,6 +976,8 @@ function Transactions({ transactions, categories, catById, accounts, accountById
             const isTransfer = t.type === "transferencia";
             const cat = catById[t.categoryId];
             const sub = cat?.subcategories?.find((s) => s.id === t.subcategoryId);
+            const isPending = !isTransfer && t.paid === false;
+            const card = t.cardId ? cardById[t.cardId] : null;
             return (
               <div
                 key={t.id}
@@ -964,13 +987,31 @@ function Transactions({ transactions, categories, catById, accounts, accountById
                 <div className="flex items-center gap-3 min-w-0">
                   <span style={{ width: 9, height: 9, borderRadius: 9, background: isTransfer ? COLORS.slate : (cat?.color || COLORS.rust), flexShrink: 0 }} />
                   <div className="min-w-0">
-                    <div style={{ fontFamily: fontBody, fontSize: 14, fontWeight: 600, color: COLORS.ink }} className="truncate">
-                      {isTransfer ? (t.description || "Transferência") : (t.description || cat?.name || "Sem descrição")}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span style={{ fontFamily: fontBody, fontSize: 14, fontWeight: 600, color: COLORS.ink }} className="truncate">
+                        {isTransfer ? (t.description || "Transferência") : (t.description || cat?.name || "Sem descrição")}
+                      </span>
+                      {isPending && (
+                        <span
+                          className="rounded-full px-2 py-0.5"
+                          style={{ fontFamily: fontBody, fontSize: 10.5, fontWeight: 700, background: `${COLORS.gold}22`, color: COLORS.gold, whiteSpace: "nowrap" }}
+                        >
+                          PENDENTE
+                        </span>
+                      )}
+                      {card && (
+                        <span
+                          className="flex items-center gap-1 rounded-full px-2 py-0.5"
+                          style={{ fontFamily: fontBody, fontSize: 10.5, fontWeight: 600, background: COLORS.paperDim, color: COLORS.slate, whiteSpace: "nowrap" }}
+                        >
+                          <CreditCard size={10} /> {card.name}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontFamily: fontBody, fontSize: 12, color: !isTransfer && !cat ? COLORS.rust : COLORS.slate, fontWeight: !isTransfer && !cat ? 600 : 400 }}>
                       {isTransfer
                         ? `${accountById[t.fromAccountId]?.name || "?"} → ${accountById[t.toAccountId]?.name || "?"}`
-                        : `${cat ? cat.name + (sub ? ` › ${sub.name}` : "") : "⚠ Não categorizado"} · ${accountById[t.accountId]?.name || "sem conta"}`
+                        : `${cat ? cat.name + (sub ? ` › ${sub.name}` : "") : "⚠ Não categorizado"} · ${card ? card.name : (accountById[t.accountId]?.name || "sem conta")}`
                       } · {new Date(t.date + "T00:00:00").toLocaleDateString("pt-BR")}
                     </div>
                   </div>
@@ -985,6 +1026,11 @@ function Transactions({ transactions, categories, catById, accounts, accountById
                     {isTransfer ? "⇄" : t.type === "receita" ? "+" : "−"} {brl(t.amount)}
                   </span>
                   <span className="no-print flex items-center gap-2">
+                    {isPending && !card && (
+                      <IconBtn onClick={() => onSettle(t)} title={t.type === "receita" ? "Marcar como recebido" : "Marcar como pago"} color={COLORS.green}>
+                        <Check size={14} />
+                      </IconBtn>
+                    )}
                     <IconBtn onClick={() => onEdit(t)} title="Editar"><Pencil size={14} /></IconBtn>
                     <IconBtn onClick={() => onDelete(t)} title="Excluir" color={COLORS.rust}><Trash2 size={14} /></IconBtn>
                   </span>
@@ -1578,7 +1624,7 @@ function Goals({ goals, onAdd, onEdit, onDelete, onContribute }) {
 /* ------------------------------------------------------------------ */
 /*  Modals: Transaction / Category / Subcategory / Goal / Contribute    */
 /* ------------------------------------------------------------------ */
-function TransactionModal({ initial, categories, accounts, onClose, onSave, onSaveRule }) {
+function TransactionModal({ initial, categories, accounts, creditCards, onClose, onSave, onSaveRule }) {
   const [type, setType] = useState(initial?.type || "despesa");
   const [categoryId, setCategoryId] = useState(initial?.categoryId || "");
   const [subcategoryId, setSubcategoryId] = useState(initial?.subcategoryId || "");
@@ -1590,8 +1636,12 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave, onSa
   const [description, setDescription] = useState(initial?.description || "");
   const [saveRule, setSaveRule] = useState(false);
   const [ruleKeyword, setRuleKeyword] = useState("");
+  const [paid, setPaid] = useState(initial?.paid !== false);
+  const [paymentMethod, setPaymentMethod] = useState(initial?.cardId ? "credito" : "conta");
+  const [cardId, setCardId] = useState(initial?.cardId || creditCards?.[0]?.id || "");
 
   const isTransfer = type === "transferencia";
+  const isCredito = type === "despesa" && paymentMethod === "credito";
   const filteredCats = categories.filter((c) => c.type === type);
   const currentCat = categories.find((c) => c.id === categoryId);
 
@@ -1606,7 +1656,7 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave, onSa
 
   const canSave = isTransfer
     ? fromAccountId && toAccountId && fromAccountId !== toAccountId && parseFloat(amount) > 0 && date
-    : categoryId && parseFloat(amount) > 0 && date;
+    : categoryId && parseFloat(amount) > 0 && date && (!isCredito || cardId);
 
   return (
     <Modal title={initial ? "Editar lançamento" : "Novo lançamento"} onClose={onClose}>
@@ -1667,11 +1717,79 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave, onSa
             </Field>
           )}
 
-          {accounts?.length > 0 && (
+          {type === "despesa" && creditCards?.length > 0 && (
+            <Field label="Forma de pagamento">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("conta")}
+                  className="flex-1 rounded-md py-2"
+                  style={{
+                    fontFamily: fontBody, fontWeight: 600, fontSize: 13,
+                    background: paymentMethod === "conta" ? COLORS.ink : COLORS.paperDim,
+                    color: paymentMethod === "conta" ? COLORS.white : COLORS.slate,
+                  }}
+                >
+                  Conta / dinheiro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("credito")}
+                  className="flex-1 rounded-md py-2"
+                  style={{
+                    fontFamily: fontBody, fontWeight: 600, fontSize: 13,
+                    background: paymentMethod === "credito" ? COLORS.ink : COLORS.paperDim,
+                    color: paymentMethod === "credito" ? COLORS.white : COLORS.slate,
+                  }}
+                >
+                  Cartão de crédito
+                </button>
+              </div>
+            </Field>
+          )}
+
+          {isCredito ? (
+            <Field label="Cartão" hint="Fica pendente automaticamente e some do saldo da conta até você pagar a fatura desse cartão.">
+              <select style={inputStyle} value={cardId} onChange={(e) => setCardId(e.target.value)}>
+                {creditCards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
+          ) : accounts?.length > 0 && (
             <Field label="Banco / conta">
               <select style={inputStyle} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
+            </Field>
+          )}
+
+          {!isCredito && (
+            <Field label="Situação">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaid(true)}
+                  className="flex-1 rounded-md py-2"
+                  style={{
+                    fontFamily: fontBody, fontWeight: 600, fontSize: 13,
+                    background: paid ? COLORS.green : COLORS.paperDim,
+                    color: paid ? COLORS.white : COLORS.slate,
+                  }}
+                >
+                  {type === "receita" ? "Recebido" : "Pago"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaid(false)}
+                  className="flex-1 rounded-md py-2"
+                  style={{
+                    fontFamily: fontBody, fontWeight: 600, fontSize: 13,
+                    background: !paid ? COLORS.gold : COLORS.paperDim,
+                    color: !paid ? COLORS.white : COLORS.slate,
+                  }}
+                >
+                  Pendente
+                </button>
+              </div>
             </Field>
           )}
         </>
@@ -1711,11 +1829,15 @@ function TransactionModal({ initial, categories, accounts, onClose, onSave, onSa
                 id: initial?.id, type, fromAccountId, toAccountId,
                 amount: parseFloat(amount), date, description: description.trim(),
                 categoryId: null, subcategoryId: null, accountId: null,
+                paid: true, cardId: null,
               });
             } else {
               onSave({
                 id: initial?.id, type, categoryId, subcategoryId: subcategoryId || null,
-                accountId: accountId || null, amount: parseFloat(amount), date, description: description.trim(),
+                accountId: isCredito ? null : (accountId || null),
+                amount: parseFloat(amount), date, description: description.trim(),
+                paid: isCredito ? false : paid,
+                cardId: isCredito ? cardId : null,
               });
               if (saveRule && ruleKeyword.trim() && onSaveRule) {
                 onSaveRule({ keyword: ruleKeyword.trim(), categoryId, subcategoryId: subcategoryId || null });
