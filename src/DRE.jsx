@@ -19,7 +19,7 @@ export default function DRE({ transactions, categories }) {
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
 
   const buildLines = (start, end, type) => {
-    const tx = transactions.filter((t) => t.type === type && t.date >= start && t.date <= end);
+    const tx = transactions.filter((t) => t.type === type && t.date >= start && t.date <= end && t.paid !== false);
     const map = {};
     tx.forEach((t) => { map[t.categoryId] = (map[t.categoryId] || 0) + t.amount; });
     return Object.entries(map)
