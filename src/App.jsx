@@ -16,6 +16,7 @@ import {
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
 import Provisions from "./Provisions.jsx";
+import Income from "./Income.jsx";
 import DRE from "./DRE.jsx";
 import CreditCards from "./CreditCards.jsx";
 import Logo from "./Logo.jsx";
@@ -65,6 +66,7 @@ const K_INVOICES = "pf-invoices";
 const K_POCKETS = "pf-pockets";
 const K_RULES = "pf-category-rules";
 const K_SETTINGS = "pf-settings";
+const K_INCOME = "pf-income";
 
 import { loadKey, saveKey } from "./storage.js";
 
@@ -84,6 +86,7 @@ export default function App({ userEmail, onSignOut }) {
   const [provisions, setProvisions] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [income, setIncome] = useState({ templates: [], entries: [] });
   const [pockets, setPockets] = useState([]);
   const [categoryRules, setCategoryRules] = useState([]);
   const [settings, setSettings] = useState({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" });
@@ -104,7 +107,7 @@ export default function App({ userEmail, onSignOut }) {
 
   useEffect(() => {
     (async () => {
-      const [tx, cat, gl, acc, inv, pur, inst, prov, cards, invs, pockets_, rules, sett] = await Promise.all([
+      const [tx, cat, gl, acc, inv, pur, inst, prov, cards, invs, pockets_, rules, sett, inc] = await Promise.all([
         loadKey(K_TX, []),
         loadKey(K_CAT, null),
         loadKey(K_GOALS, []),
@@ -118,6 +121,7 @@ export default function App({ userEmail, onSignOut }) {
         loadKey(K_POCKETS, []),
         loadKey(K_RULES, []),
         loadKey(K_SETTINGS, { monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light" }),
+        loadKey(K_INCOME, { templates: [], entries: [] }),
       ]);
       let finalCat = cat;
       if (!finalCat || finalCat.length === 0) {
@@ -142,6 +146,7 @@ export default function App({ userEmail, onSignOut }) {
       setPockets(pockets_);
       setCategoryRules(rules);
       setSettings({ monthlyCommitLimit: 0, assetClassTargets: {}, theme: "light", ...(sett || {}) });
+      setIncome({ templates: [], entries: [], ...(inc || {}) });
       setReady(true);
     })();
   }, []);
@@ -158,6 +163,7 @@ export default function App({ userEmail, onSignOut }) {
   const persistInvoices = useCallback((next) => { setInvoices(next); saveKey(K_INVOICES, next); }, []);
   const persistPockets = useCallback((next) => { setPockets(next); saveKey(K_POCKETS, next); }, []);
   const persistCategoryRules = useCallback((next) => { setCategoryRules(next); saveKey(K_RULES, next); }, []);
+  const persistIncome = useCallback((next) => { setIncome(next); saveKey(K_INCOME, next); }, []);
   const persistSettings = useCallback((next) => { setSettings(next); saveKey(K_SETTINGS, next); }, []);
 
   useEffect(() => {
@@ -415,6 +421,7 @@ export default function App({ userEmail, onSignOut }) {
               { id: "installments", label: "Parcelamentos", icon: Repeat },
               { id: "creditcards", label: "Cartões", icon: CreditCard },
               { id: "provisions", label: "Provisões", icon: CalendarClock },
+              { id: "income", label: "Salário", icon: Wallet },
               { id: "dre", label: "DRE", icon: FileText },
             ].map((item) => {
               const Icon = item.icon;
@@ -581,6 +588,14 @@ export default function App({ userEmail, onSignOut }) {
               persistProvisions={persistProvisions}
               onLaunch={handleLaunchProvision}
               onDeleteRequest={(p) => setConfirmDelete({ type: "prov", id: p.id, label: p.description })}
+            />
+          )}
+          {tab === "income" && (
+            <Income
+              income={income} persistIncome={persistIncome}
+              accounts={accounts} categories={categories}
+              transactions={transactions} persistTx={persistTx}
+              provisions={provisions} persistProvisions={persistProvisions}
             />
           )}
           {tab === "dre" && (
