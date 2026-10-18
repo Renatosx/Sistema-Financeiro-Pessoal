@@ -913,14 +913,21 @@ function SummaryCard({ label, value, icon: Icon, tone, stamp }) {
 function Transactions({ transactions, categories, catById, accounts, accountById, creditCards, onAdd, onEdit, onDelete, onImport, onSettle }) {
   const [filterType, setFilterType] = useState("todos");
   const [filterCat, setFilterCat] = useState("todas");
+  const [filterAcc, setFilterAcc] = useState("todos_bancos");
   const cardById = useMemo(() => Object.fromEntries((creditCards || []).map((c) => [c.id, c])), [creditCards]);
 
   const list = useMemo(() => {
     return transactions
       .filter((t) => (filterType === "todos" ? true : t.type === filterType))
       .filter((t) => (filterCat === "todas" ? true : filterCat === "sem_categoria" ? !t.categoryId && t.type !== "transferencia" : t.categoryId === filterCat))
+      .filter((t) => {
+        if (filterAcc === "todos_bancos") return true;
+        // compra no cartão conta para o banco do cartão
+        const bankId = t.accountId || cardById[t.cardId]?.accountId;
+        return bankId === filterAcc || t.toAccountId === filterAcc;
+      })
       .sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [transactions, filterType, filterCat]);
+  }, [transactions, filterType, filterCat, filterAcc, cardById]);
 
   return (
     <div>
@@ -965,6 +972,10 @@ function Transactions({ transactions, categories, catById, accounts, accountById
           { value: "todas", label: "Todas as categorias" },
           { value: "sem_categoria", label: "⚠ Não categorizado" },
           ...categories.map((c) => ({ value: c.id, label: c.name })),
+        ]} />
+        <Select value={filterAcc} onChange={setFilterAcc} options={[
+          { value: "todos_bancos", label: "Todos os bancos" },
+          ...accounts.map((a) => ({ value: a.id, label: a.name })),
         ]} />
       </div>
 
