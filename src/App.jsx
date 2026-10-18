@@ -11,11 +11,7 @@ import {
   Printer, Upload, Download, Repeat,
 } from "lucide-react";
 import {
-  COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono,
-  uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate,
-  inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn,
-  Panel, EmptyHint, Header, Select, periodRange, shiftPeriod, PeriodSwitcher,
-  parseCSV, parseDateFlexible, parseAmountFlexible, parseOFX, matchCategoryRule,
+  COLORS, CATEGORY_PALETTE, ACCOUNT_PALETTE, fontDisplay, fontBody, fontMono, uid, brl, monthKey, todayISO, monthLabel, shiftMonth, addMonthToDate, inputStyle, Stamp, IconBtn, Modal, Field, PrimaryBtn, GhostBtn, Panel, EmptyHint, Header, Select, periodRange, shiftPeriod, PeriodSwitcher, parseCSV, parseDateFlexible, parseAmountFlexible, parseOFX, matchCategoryRule, brDate,
 } from "./shared.jsx";
 import Investments from "./Investments.jsx";
 import Installments from "./Installments.jsx";
@@ -505,6 +501,8 @@ export default function App({ userEmail, onSignOut }) {
               expenseByCategory={expenseByCategory} budgetData={budgetData}
               goals={goalBalances} accountBalances={accountBalances}
               annualData={annualData} annualYear={annualYear} setAnnualYear={setAnnualYear}
+              invoices={invoices} creditCards={creditCards} provisions={provisions} accountById={accountById}
+              onGoTab={setTab}
             />
           )}
           {tab === "transactions" && (
@@ -735,7 +733,18 @@ export default function App({ userEmail, onSignOut }) {
 /* ------------------------------------------------------------------ */
 /*  Dashboard                                                           */
 /* ------------------------------------------------------------------ */
-function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, customStart, setCustomStart, customEnd, setCustomEnd, periodLabel, totals, totalBalanceAllTime, expenseByCategory, budgetData, goals, accountBalances, annualData, annualYear, setAnnualYear }) {
+function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, customStart, setCustomStart, customEnd, setCustomEnd, periodLabel, totals, totalBalanceAllTime, expenseByCategory, budgetData, goals, accountBalances, annualData, annualYear, setAnnualYear, invoices = [], creditCards = [], provisions = [], accountById = {}, onGoTab }) {
+  const dueToday = todayISO();
+  const cardNameById = Object.fromEntries(creditCards.map((c) => [c.id, c.name]));
+  const openInvoices = invoices.filter((i) => i.status !== "pago");
+  const openProv = provisions.filter((p) => p.status !== "concluido");
+  const invoicesTotal = openInvoices.reduce((a, i) => a + i.amount, 0);
+  const payTotal = openProv.filter((p) => p.type === "pagar").reduce((a, p) => a + p.amount, 0);
+  const receiveTotal = openProv.filter((p) => p.type === "receber").reduce((a, p) => a + p.amount, 0);
+  const upcoming = [
+    ...openInvoices.map((i) => ({ key: "inv" + i.id, kind: "fatura", label: "Fatura " + (cardNameById[i.cardId] || "cartão"), date: i.dueDate, amount: -i.amount, sub: "Cartão de crédito" })),
+    ...openProv.map((p) => ({ key: "prov" + p.id, kind: p.type, label: p.description, date: p.expectedDate, amount: p.type === "pagar" ? -p.amount : p.amount, sub: accountById[p.accountId]?.name || "" })),
+  ].sort((x, y) => (x.date < y.date ? -1 : 1)).slice(0, 10);
   return (
     <div>
       <Header
@@ -767,6 +776,55 @@ function Dashboard({ periodType, setPeriodType, periodAnchor, setPeriodAnchor, c
           {brl(totalBalanceAllTime)}
         </span>
       </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+        <div className="rounded-md p-4 cursor-pointer" onClick={() => onGoTab && onGoTab("creditcards")} style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
+          <div className="flex items-center justify-between mb-2">
+            <span style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.slate, fontWeight: 600 }}>Faturas de cartão a pagar</span>
+            <CreditCard size={15} style={{ color: COLORS.rust }} />
+          </div>
+          <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: COLORS.rust }}>{brl(invoicesTotal)}</div>
+        </div>
+        <div className="rounded-md p-4 cursor-pointer" onClick={() => onGoTab && onGoTab("provisions")} style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
+          <div className="flex items-center justify-between mb-2">
+            <span style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.slate, fontWeight: 600 }}>Gastos previstos (provisões)</span>
+            <TrendingDown size={15} style={{ color: COLORS.rust }} />
+          </div>
+          <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: COLORS.rust }}>{brl(payTotal)}</div>
+        </div>
+        <div className="rounded-md p-4 cursor-pointer" onClick={() => onGoTab && onGoTab("provisions")} style={{ background: COLORS.white, border: `1px solid ${COLORS.line}` }}>
+          <div className="flex items-center justify-between mb-2">
+            <span style={{ fontFamily: fontBody, fontSize: 12.5, color: COLORS.slate, fontWeight: 600 }}>Recebimentos previstos</span>
+            <TrendingUp size={15} style={{ color: COLORS.green }} />
+          </div>
+          <div style={{ fontFamily: fontMono, fontSize: 20, fontWeight: 600, color: COLORS.green }}>{brl(receiveTotal)}</div>
+        </div>
+      </div>
+
+      {upcoming.length > 0 && (
+        <div className="mt-5">
+          <Panel title="Próximos vencimentos">
+            <div className="space-y-2">
+              {upcoming.map((u) => {
+                const late = u.date < dueToday;
+                return (
+                  <div key={u.key} className="flex items-center justify-between rounded-md px-4 py-2.5" style={{ background: COLORS.paperDim }}>
+                    <div className="min-w-0">
+                      <div style={{ fontFamily: fontBody, fontSize: 13.5, fontWeight: 600, color: COLORS.ink }} className="truncate">{u.label}</div>
+                      <div style={{ fontFamily: fontBody, fontSize: 12, color: late ? COLORS.rust : COLORS.slate }}>
+                        {late ? "Venceu em " : "Vence em "}{brDate(u.date)}{u.sub ? " · " + u.sub : ""}
+                      </div>
+                    </div>
+                    <span style={{ fontFamily: fontMono, fontSize: 14, fontWeight: 600, color: u.amount < 0 ? COLORS.rust : COLORS.green }}>
+                      {u.amount < 0 ? "− " : "+ "}{brl(Math.abs(u.amount))}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+        </div>
+      )}
 
       {accountBalances.length > 0 && (
         <div className="mt-5">
